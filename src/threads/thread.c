@@ -45,6 +45,10 @@ struct kernel_thread_frame
     void *aux;                  /* Auxiliary data for function. */
   };
 
+/* sleep list */
+static struct list sleep_list;
+static int64_t next_wakeup_tick; 
+
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
@@ -92,6 +96,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init(&sleep_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -579,6 +584,38 @@ allocate_tid (void)
   return tid;
 }
 
+
+bool wake_up(struct list_elem* a, struct list_elem* b, void* aux){
+  struct thread* a1 = list_entry(a, struct thread, sleepelem);
+  struct thread* b1 = list_entry(b, struct thread, sleepelem);
+  return a1->tick < b1->tick;
+}
+
+void thread_sleep(int64_t x){
+  intr_disable();
+  int64_t start = timer_ticks ();
+  struct thread *cur =  thread_current();
+  cur->tick = start + x;
+  list_insert_ordered(&sleep_list, &cur->sleepelem, wake_up, NULL);
+  thread_block();
+  intr_enable();
+}
+
+void thread_wakeup(int64_t y){
+
+  struct list_elem* cur = list_begin(&sleep_list);
+  struct thread* cur_thread = list_entry(cur, struct thread, sleepelem);
+  while(cur_thread->tick <= y && cur != list_tail(&sleep_list)){
+    list_remove(cur);
+    thread_unblock(cur_thread);
+
+    cur = list_next(cur);
+    cur_thread = list_entry(cur, struct thread, sleepelem );
+  }
+
+}
+
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
