@@ -64,7 +64,7 @@ test_sleep (int thread_cnt, int iterations)
   msg ("thread 1 sleeps 20 ticks each time, and so on.");
   msg ("If successful, product of iteration count and");
   msg ("sleep duration will appear in nondescending order.");
-
+  
   /* Allocate memory. */
   threads = malloc (sizeof *threads * thread_cnt);
   output = malloc (sizeof *output * iterations * thread_cnt * 2);
@@ -78,6 +78,7 @@ test_sleep (int thread_cnt, int iterations)
   test.output_pos = output;
 
   /* Start threads. */
+  
   ASSERT (output != NULL);
   for (i = 0; i < thread_cnt; i++)
     {
@@ -99,7 +100,7 @@ test_sleep (int thread_cnt, int iterations)
   /* Acquire the output lock in case some rogue thread is still
      running. */
   lock_acquire (&test.output_lock);
-
+  
   /* Print completion order. */
   product = 0;
   for (op = output; op < test.output_pos; op++) 
