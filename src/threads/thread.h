@@ -101,6 +101,11 @@ struct thread
     struct list_elem sleepelem;
     int64_t tick; /* for wakeup */
 
+   /* mlfqs */
+   int nice;
+   int recent_cpu;
+
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -133,6 +138,9 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+/*thread yield caused by timer interrupt (mlfqs) */
+/*void thread_yield_by_timer(void);*/
+
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
@@ -156,4 +164,10 @@ void thread_wakeup(int64_t);
 void priority_donation(struct lock *);
 void reverse_donation(struct lock *);
 */
+void calc_load_avg(void);
+void calc_recent_cpu(struct thread* );
+void calc_priority(struct thread* );
+void increase_recent_cpu(void);
+void allthread_update();
+void mlfqs_schedule(void);
 #endif /* threads/thread.h */
