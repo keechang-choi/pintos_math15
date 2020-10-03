@@ -93,6 +93,15 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
+    /* donation control */
+    int past_priority;
+    struct list lock_list;
+    struct thread* to_donation;
+
+    struct list_elem sleepelem;
+    int64_t tick; /* for wakeup */
+
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -137,5 +146,16 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+bool wake_up(struct list_elem*, struct list_elem*, void*);
+bool compare_priority(struct list_elem*, struct list_elem*, void*);
+bool lock_priority(struct list_elem*, struct list_elem*, void*);
+bool wait_lock_priority(struct list_elem*, struct list_elem*, void*);
+void thread_sleep(int64_t);
+void thread_wakeup(int64_t);
+/*
+void priority_donation(struct lock *);
+void reverse_donation(struct lock *);
+*/
 
 #endif /* threads/thread.h */

@@ -45,6 +45,10 @@ struct kernel_thread_frame
     void *aux;                  /* Auxiliary data for function. */
   };
 
+/* sleep list */
+static struct list sleep_list;
+
+
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
@@ -92,6 +96,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init(&sleep_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -578,7 +583,122 @@ allocate_tid (void)
 
   return tid;
 }
-
+
+bool wake_up(struct list_elem* a, struct list_elem* b, void* aux){
+  struct thread* a1 = list_entry(a, struct thread, sleepelem);
+  struct thread* b1 = list_entry(b, struct thread, sleepelem);
+  return a1->tick < b1->tick;
+}
+bool compare_priority(struct list_elem* a, struct list_elem* b, void* aux){
+  struct thread* a1 = list_entry(a, struct thread, elem);
+  struct thread* b1 = list_entry(b, struct thread, elem);
+  return a1->priority > b1->priority;
+}
+
+bool lock_priority(struct list_elem* a, struct list_elem* b, void* aux){
+  struct lock* a1 = list_entry(a, struct lock, lock_elem);
+  struct lock* b1 = list_entry(b, struct lock, lock_elem);
+  return a1->holder->priority > b1->holder->priority;
+}
+
+bool wait_lock_priority(struct list_elem* a, struct list_elem* b, void* aux){
+  struct lock* a1 = list_entry(a, struct lock, lock_elem);
+  struct lock* b1 = list_entry(b, struct lock, lock_elem);
+
+  if (list_size(&a1->semaphore.waiters)==0){
+    return false;
+  }
+  else if(list_size(&b1->semaphore.waiters)==0){
+    return true;
+  }
+
+  struct thread* a2 = list_entry (list_begin(&a1->semaphore.waiters), struct thread, elem);
+  struct thread* b2 = list_entry (list_begin(&b1->semaphore.waiters), struct thread, elem);
+  
+  return a2->priority > b2->priority;
+}
+
+
+
+void thread_sleep(int64_t x){
+  intr_disable();
+  int64_t start = timer_ticks ();
+  struct thread *cur =  thread_current();
+  cur->tick = start + x;
+  list_insert_ordered(&sleep_list, &cur->sleepelem, wake_up, NULL);
+  thread_block();
+  intr_enable();
+
+}
+
+void thread_wakeup(int64_t y){
+
+  struct list_elem* cur = list_begin(&sleep_list);
+  struct thread* cur_thread = list_entry(cur, struct thread, sleepelem);
+  while(cur_thread->tick <= y && cur != list_tail(&sleep_list)){
+    list_remove(cur);
+    thread_unblock(cur_thread);
+    cur = list_next(cur);
+    cur_thread = list_entry(cur, struct thread, sleepelem );
+  }
+}
+
+
+void priority_donation(struct lock *lock){
+
+  struct thread* lock_holder = lock->holder;
+  struct thread* cur = thread_current();
+  if(lock == NULL)
+    return;
+  if(lock_holder == NULL)
+    return;
+  if(lock_holder->priority >= cur->priority)
+    return;
+  lock_holder->priority = cur->priority;
+  cur->to_donation = lock_holder;
+  
+
+  struct thread* temp = lock->holder;
+  while(temp->to_donation != NULL){
+    temp = temp->to_donation;
+    temp->priority = cur->priority;
+  }
+  return;
+}
+
+void reverse_donation(struct lock *lock){
+  
+  ASSERT (lock!=NULL);
+  
+
+  struct thread* cur = thread_current();
+
+
+  if(list_empty(&cur->lock_list)){
+    cur->priority = cur->past_priority;
+  }
+  else{
+    list_sort(&cur->lock_list, wait_lock_priority, NULL);
+    struct lock* prior_lock = list_entry (list_begin(&cur->lock_list), struct lock, lock_elem);
+    if (list_size(&prior_lock->semaphore.waiters)==0){
+      cur->priority = cur->past_priority;
+    }
+    else{
+      struct thread* prior_thread = list_entry (list_begin(&prior_lock->semaphore.waiters), struct thread, elem);
+   
+      if (prior_thread->priority < cur->past_priority){
+        cur->priority = cur->past_priority;
+      }
+      else{
+        cur->priority = prior_thread->priority;
+      } 
+    }
+  }
+  
+  
+}
+
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
