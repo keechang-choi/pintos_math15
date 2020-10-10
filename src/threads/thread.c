@@ -242,7 +242,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  list_insert_ordered (&ready_list, &t->elem, compare_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -313,7 +313,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered (&ready_list, &cur->elem, compare_priority, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -646,10 +646,11 @@ void thread_wakeup(int64_t y){
 
 void priority_donation(struct lock *lock){
 
+  ASSERT(lock != NULL);
+
   struct thread* lock_holder = lock->holder;
   struct thread* cur = thread_current();
-  if(lock == NULL)
-    return;
+  
   if(lock_holder == NULL)
     return;
   if(lock_holder->priority >= cur->priority)
@@ -680,7 +681,7 @@ void reverse_donation(struct lock *lock){
   else{
     list_sort(&cur->lock_list, wait_lock_priority, NULL);
     struct lock* prior_lock = list_entry (list_begin(&cur->lock_list), struct lock, lock_elem);
-    if (list_size(&prior_lock->semaphore.waiters)==0){
+    if (list_empty(&prior_lock->semaphore.waiters)){
       cur->priority = cur->past_priority;
     }
     else{
