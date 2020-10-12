@@ -348,7 +348,25 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  int before_set_priority = thread_current()->priority;
+  // lower
+  if(new_priority < thread_current()->priority){
+    //if not donated
+    if(thread_current()->priority == thread_current()->past_priority){
+      thread_current()->priority = new_priority;
+    }
+  //upper
+  }else{
+    thread_current()->priority = new_priority;
+  }
+  thread_current()->past_priority = new_priority;
+  
+  //if we lowered the  priority
+  if (before_set_priority > thread_current()->priority){
+    struct thread* first = list_entry(list_begin(&ready_list), struct thread, elem);
+    if (new_priority < first->priority)
+      thread_yield();
+  }
 }
 
 /* Returns the current thread's priority. */
@@ -478,9 +496,10 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
   // init_added
+  t->past_priority = priority;
   t->to_donation = NULL;
   list_init(&t->lock_list);
- // t->nice = 0;
+  // t->nice = 0;
   //t->recent_cpu = 0;
 
 
