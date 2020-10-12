@@ -102,6 +102,11 @@ struct thread
     int64_t tick; /* for wakeup */
 
 
+    /* MLFQS */
+    int nice;
+    int recent_cpu;
+    struct list_elem mlfqselem;
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -157,5 +162,12 @@ void thread_wakeup(int64_t);
 void priority_donation(struct lock *);
 void reverse_donation(struct lock *);
 */
+void calc_load_avg(void);
+void calc_recent_cpu_action(struct thread*, void * );
+void calc_priority_action(struct thread* , void *);
+void increase_recent_cpu(void);
+void allthread_update(void);
+void mlfqs_schedule(void);
+void init_mlfqs_rq(int);
 
 #endif /* threads/thread.h */

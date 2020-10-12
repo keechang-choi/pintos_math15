@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/fixed.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -58,10 +59,15 @@ static long long user_ticks;    /* # of timer ticks in user programs. */
 #define TIME_SLICE 4            /* # of timer ticks to give each thread. */
 static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
+
+static int highest_priority;
+static struct list mlfqs_ready_queues[64];
+
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+static int load_avg;
 
 static void kernel_thread (thread_func *, void *aux);
 
@@ -92,7 +98,9 @@ void
 thread_init (void) 
 {
   ASSERT (intr_get_level () == INTR_OFF);
-
+  //init before next_thread_to_run
+  init_mlfqs_rq(PRI_DEFAULT);
+  
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
@@ -103,6 +111,9 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  
+  load_avg = 0;
+ 
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -138,6 +149,26 @@ thread_tick (void)
 #endif
   else
     kernel_ticks++;
+
+  enum intr_level old_level;
+
+  if(thread_mlfqs){
+    // for only running thread
+    increase_recent_cpu();
+    if(timer_ticks() % 100 ==0){
+      calc_load_avg();
+      old_level = intr_disable ();
+      thread_foreach(calc_recent_cpu_action, NULL);
+      intr_set_level (old_level);
+    }
+    if(timer_ticks()%4 ==0){
+      old_level = intr_disable ();
+      init_mlfqs_rq(PRI_DEFAULT);     
+      thread_foreach(calc_priority_action, NULL);
+      intr_set_level (old_level);
+      //mlfqs_schedule();      
+    }
+  }
 
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
@@ -249,6 +280,7 @@ thread_unblock (struct thread *t)
   ASSERT (t->status == THREAD_BLOCKED);
   //list_push_back (&ready_list, &t->elem);  
   list_insert_ordered (&ready_list, &t->elem, compare_priority, NULL);
+  list_push_back(&mlfqs_ready_queues[0], &t->mlfqselem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -318,10 +350,11 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
+  if (cur != idle_thread){ 
     //list_push_back (&ready_list, &cur->elem);
     list_insert_ordered (&ready_list, &cur->elem, compare_priority, NULL);
-  
+    list_push_back(mlfqs_ready_queues+(cur->priority), &cur->mlfqselem);
+  }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -348,6 +381,8 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+  if(thread_mlfqs)
+    return;
   int before_set_priority = thread_current()->priority;
   // lower
   if(new_priority < thread_current()->priority){
@@ -380,33 +415,39 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+  thread_current() -> nice = nice;
+  calc_recent_cpu_action(thread_current(), NULL);
+  calc_priority_action(thread_current(), NULL);
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return thread_current ()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  enum intr_level old_level = intr_disable();
+  int value = x_to_int_near(mult_xn(load_avg, 100));
+  intr_set_level(old_level);
+  return value;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  enum intr_level old_level = intr_disable();
+  struct thread* t = thread_current();
+  int value = x_to_int_near(mult_xn(t->recent_cpu, 100));
+  intr_set_level(old_level);
+  return value;
 }
-
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -492,15 +533,19 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priority = priority;
+  if(thread_mlfqs){
+    t->priority = PRI_DEFAULT;
+  }else{
+    t->priority = priority;
+  }
   t->magic = THREAD_MAGIC;
 
   // init_added
   t->past_priority = priority;
   t->to_donation = NULL;
   list_init(&t->lock_list);
-  // t->nice = 0;
-  //t->recent_cpu = 0;
+  t->nice = 0;
+  t->recent_cpu = 0;
 
 
   old_level = intr_disable ();
@@ -529,10 +574,27 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (list_empty (&ready_list))
+  //if(0){
+  if(thread_mlfqs){
+    int i;
+    for(i=63; i >= 0; i--){
+      if(list_empty(mlfqs_ready_queues+i)){
+      	continue;
+      }else{
+	struct thread *tmp_t = list_entry(list_pop_front(mlfqs_ready_queues+i), struct thread, mlfqselem );
+	list_remove(&tmp_t->elem);
+	return tmp_t;
+      }
+    }
+    ASSERT(is_thread(idle_thread));
     return idle_thread;
-  else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  }
+  else{  
+    if (list_empty (&ready_list))
+      return idle_thread;
+    else
+      return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  }
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -594,7 +656,8 @@ schedule (void)
   struct thread *cur = running_thread ();
   struct thread *next = next_thread_to_run ();
   struct thread *prev = NULL;
-
+  
+  ASSERT (next != NULL);
   ASSERT (intr_get_level () == INTR_OFF);
   ASSERT (cur->status != THREAD_RUNNING);
   ASSERT (is_thread (next));
@@ -732,10 +795,81 @@ void reverse_donation(struct lock *lock){
       } 
     }
   }
-  
-  
 }
 
+
+void calc_load_avg(void){
+  /* 59/60 */
+  int const1 = divide_xn(n_to_fp(59), 60);
+  /* 1/60 */
+  int const2 = divide_xn(n_to_fp(1), 60);
+  int ready_threads = list_size(&ready_list);
+
+  if(thread_current() != idle_thread)
+    ready_threads += 1;
+  load_avg = add_xy(mult_xy(const1, load_avg), mult_xn(const2, ready_threads)); 
+}
+
+
+void calc_recent_cpu_action(struct thread *t, void *aux){
+  int term1 = mult_xn(load_avg, 2);
+  int term2 = add_xn(term1, 1);
+  int term3 = mult_xy(divide_xy(term1, term2), t->recent_cpu);
+  t->recent_cpu = add_xn(term3, t->nice);
+}
+
+
+void calc_priority_action(struct thread* t, void *aux){
+  int term1 = divide_xn(t->recent_cpu, 4);
+  int term2 = t->nice * 2;
+  int term3 = n_to_fp(PRI_MAX);
+  int term4 = sub_xy(term3, term1);
+  int term5 = sub_xn(term4, term2);
+  
+  t->priority = x_to_int_near(term5);
+  if(t->priority > PRI_MAX)
+    t->priority = PRI_MAX;
+  if(t->priority < PRI_MIN)
+    t->priority = PRI_MIN;
+  if(t->priority > highest_priority)
+    highest_priority = t->priority;
+  if(t->status == THREAD_READY)
+    list_push_back(mlfqs_ready_queues+(t->priority), &t->mlfqselem); 
+}
+
+void increase_recent_cpu(void){
+  struct thread* t = thread_current();
+  t->recent_cpu = add_xn(t->recent_cpu, 1);
+}
+/*
+void allthread_update(void){
+  struct list_elem* e;
+  for (e = list_begin(&all_list); e!=list_end(&all_list); e=list_next(e)){
+    struct thread* t = list_entry(e, struct thread, allelem);
+    calc_recent_cpu(t);
+    calc_priority(t);
+  }
+  list_sort(&ready_list, compare_priority, NULL);
+}
+*/
+void mlfqs_schedule(void){
+
+  if (list_empty(&ready_list))
+    return;
+  struct thread* t = list_entry (list_begin(&ready_list), struct thread, elem);
+  if (t->priority > thread_current()->priority)
+  if (thread_current()->priority < t->priority || (thread_ticks >= TIME_SLICE && thread_current()->priority == t->priority)) {
+    intr_yield_on_return();
+  }
+}
+
+void init_mlfqs_rq(int hp){
+  int i=0;
+  for(i=0; i<64; i++){
+    list_init (mlfqs_ready_queues+i);
+  }
+  highest_priority = hp;
+}
 
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
