@@ -206,6 +206,11 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  //new thread first
+  if(t->priority > thread_get_priority())
+    thread_yield();
+
+
   return tid;
 }
 
@@ -242,6 +247,7 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
+  //list_push_back (&ready_list, &t->elem);  
   list_insert_ordered (&ready_list, &t->elem, compare_priority, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
@@ -313,7 +319,9 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
+    //list_push_back (&ready_list, &cur->elem);
     list_insert_ordered (&ready_list, &cur->elem, compare_priority, NULL);
+  
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -469,6 +477,13 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->magic = THREAD_MAGIC;
 
+  // init_added
+  t->to_donation = NULL;
+  list_init(&t->lock_list);
+ // t->nice = 0;
+  //t->recent_cpu = 0;
+
+
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
@@ -589,6 +604,7 @@ bool wake_up(struct list_elem* a, struct list_elem* b, void* aux){
   struct thread* b1 = list_entry(b, struct thread, sleepelem);
   return a1->tick < b1->tick;
 }
+
 bool compare_priority(struct list_elem* a, struct list_elem* b, void* aux){
   struct thread* a1 = list_entry(a, struct thread, elem);
   struct thread* b1 = list_entry(b, struct thread, elem);
@@ -655,9 +671,11 @@ void priority_donation(struct lock *lock){
     return;
   if(lock_holder->priority >= cur->priority)
     return;
+
   lock_holder->priority = cur->priority;
   cur->to_donation = lock_holder;
   
+
 
   struct thread* temp = lock->holder;
   while(temp->to_donation != NULL){
