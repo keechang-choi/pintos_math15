@@ -202,8 +202,15 @@ lock_acquire (struct lock *lock)
   ASSERT (!lock_held_by_current_thread (lock));
   if(!thread_mlfqs) 
     priority_donation(lock);
+  char *n;
+  int p;
+  n = thread_current()->name;
+  p = thread_current()->priority;
   
   sema_down (&lock->semaphore);
+  n = thread_current()->name;
+  p = thread_current()->priority;
+  
   lock->holder = thread_current ();
   //list_push_back(&lock->holder->lock_list, &lock->lock_elem);
   list_insert_ordered(&lock->holder->lock_list, &lock->lock_elem, lock_priority, NULL);

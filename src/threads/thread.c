@@ -61,6 +61,7 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
 
 
 static int highest_priority;
+static struct thread *highest_thread;
 static struct list mlfqs_ready_queues[64];
 
 /* If false (default), use round-robin scheduler.
@@ -163,7 +164,8 @@ thread_tick (void)
     }
     if(timer_ticks()%4 ==0){
       old_level = intr_disable ();
-      init_mlfqs_rq(PRI_DEFAULT);     
+      //init_mlfqs_rq(PRI_DEFAULT);     
+      highest_priority = 0;
       thread_foreach(calc_priority_action, NULL);
       intr_set_level (old_level);
       //mlfqs_schedule();      
@@ -278,9 +280,11 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  //list_push_back (&ready_list, &t->elem);  
-  list_insert_ordered (&ready_list, &t->elem, compare_priority, NULL);
-  list_push_back(&mlfqs_ready_queues[0], &t->mlfqselem);
+  //list_push_back (&ready_list, &t->elem);
+  if(!thread_mlfqs)  
+    list_insert_ordered (&ready_list, &t->elem, compare_priority, NULL);
+  else
+    list_push_back(mlfqs_ready_queues+(t->priority), &t->mlfqselem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -352,8 +356,10 @@ thread_yield (void)
   old_level = intr_disable ();
   if (cur != idle_thread){ 
     //list_push_back (&ready_list, &cur->elem);
-    list_insert_ordered (&ready_list, &cur->elem, compare_priority, NULL);
-    list_push_back(mlfqs_ready_queues+(cur->priority), &cur->mlfqselem);
+    if(!thread_mlfqs)
+      list_insert_ordered (&ready_list, &cur->elem, compare_priority, NULL);
+    else
+      list_push_back(mlfqs_ready_queues+(cur->priority), &cur->mlfqselem);
   }
   cur->status = THREAD_READY;
   schedule ();
@@ -804,6 +810,11 @@ void calc_load_avg(void){
   /* 1/60 */
   int const2 = divide_xn(n_to_fp(1), 60);
   int ready_threads = list_size(&ready_list);
+  int i=0;
+  ready_threads = 0;
+  for(i=0;i <= 63;i++){
+    ready_threads += list_size(mlfqs_ready_queues+i);
+  }
 
   if(thread_current() != idle_thread)
     ready_threads += 1;
@@ -831,10 +842,14 @@ void calc_priority_action(struct thread* t, void *aux){
     t->priority = PRI_MAX;
   if(t->priority < PRI_MIN)
     t->priority = PRI_MIN;
-  if(t->priority > highest_priority)
+  if(t != idle_thread && t->priority > highest_priority){
+    highest_thread = t;
     highest_priority = t->priority;
-  if(t->status == THREAD_READY)
+  }
+  if(t->status == THREAD_READY){
+    list_remove(&t->mlfqselem);
     list_push_back(mlfqs_ready_queues+(t->priority), &t->mlfqselem); 
+  }
 }
 
 void increase_recent_cpu(void){
