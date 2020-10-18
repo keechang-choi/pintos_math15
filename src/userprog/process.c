@@ -20,7 +20,6 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -46,19 +45,20 @@ process_execute (const char *file_name_origin)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
- 
+  struct thread* child = thread_search(tid);
+  if(child==NULL)
+      printf("CHild OMG\n");
+  sema_down(&child->load_sema);
   
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
   else
   {
-    struct thread* child = thread_search(tid);
-    if(child==NULL)
-      printf("CHild OMG\n");
+    
     //printf("cur::%s\n", thread_current()->name);
     list_push_front(&thread_current()->child_list, &child->child_elem);
   }
-  
+  /* */
   free(temp);   
   return tid; 
 }
@@ -79,6 +79,7 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
+  sema_up(&thread_current()->load_sema);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -114,15 +115,19 @@ process_wait (tid_t child_tid UNUSED)
 {
   
   struct thread* cur = thread_current();
+
   struct thread* child = child_search(child_tid, &cur->child_list);
+  
   if(child == NULL){
-    printf("wait_child_null\n");
     return -1;
   }
-    
+  list_remove(&child->child_elem);
   sema_down(&child->waiting_sema);
+  int exit_val = child->exit_status;
+  thread_unblock(child);
   //printf("wait??\n");
-  return -1;
+ 
+  return exit_val;
 }
 
 /* Free the current process's resources. */
@@ -131,7 +136,7 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-
+  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -150,7 +155,7 @@ process_exit (void)
     }
 
   /* wait handle */
-  sema_up(&cur->waiting_sema);
+  
 }
 
 /* Sets up the CPU for running user code in the current

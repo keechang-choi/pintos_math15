@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include "threads/synch.h"
 
+
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -108,8 +109,13 @@ struct thread
    struct list_elem child_elem;
    int create_success;
    int process_done;
+   int exit_status;
    struct semaphore waiting_sema;
-  
+   struct semaphore load_sema;
+   
+
+  /*file control */
+   struct list files_list;
 
    /* flag */
    bool alive;

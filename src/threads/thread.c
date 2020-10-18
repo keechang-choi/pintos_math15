@@ -282,8 +282,15 @@ void
 thread_exit (void) 
 {
   ASSERT (!intr_context ());
+  
 
 #ifdef USERPROG
+  sema_up(&thread_current()->waiting_sema);
+  enum intr_level old_level;
+  old_level = intr_disable ();
+  thread_block();
+  intr_set_level (old_level);
+
   process_exit ();
 #endif
 
@@ -473,7 +480,9 @@ init_thread (struct thread *t, const char *name, int priority)
 
   /*child process.. waiting.. */
   sema_init(&t->waiting_sema, 0);
-
+  sema_init(&t->load_sema,0);
+  list_init(&t->files_list);
+  
 
   intr_set_level (old_level);
 }
@@ -547,7 +556,7 @@ thread_schedule_tail (struct thread *prev)
   if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread) 
     {
       ASSERT (prev != cur);
-      palloc_free_page (prev);
+      //palloc_free_page (prev);
     }
 }
 
@@ -595,10 +604,14 @@ uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
 struct thread* child_search(tid_t t, struct list* list){
   struct list_elem* e;
+  struct thread* temp;
   for(e = list_begin(list); e!=list_end(list); e = list_next(e)){
-    struct thread* temp = list_entry(e, struct thread, child_elem);
-    if(temp->tid == t)
+    temp = list_entry(e, struct thread, child_elem);
+   
+    if(temp->tid == t){
       return temp;
+    }
+     
   }
   return NULL;
 }

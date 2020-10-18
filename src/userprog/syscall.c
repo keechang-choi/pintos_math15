@@ -8,9 +8,18 @@
 #include "threads/init.h"
 #include "threads/synch.h"
 #include "filesys/filesys.h"
-
+#include "userprog/pagedir.h"
 static void syscall_handler (struct intr_frame *);
 struct lock filesys_lock;
+
+struct one_file{
+  struct file* file;
+  struct list_elem file_elem;
+  int fd;
+};
+
+
+
 void
 syscall_init (void) 
 {
@@ -39,7 +48,8 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
     case SYS_WAIT:
       get_args(f->esp+4, &args[0], 1);
-      f->eax = process_wait(&args[0]);
+      
+      f->eax = wait((int)args[0]);
       break;
     case SYS_CREATE:
       get_args(f->esp+4, &args[0], 2);
@@ -50,6 +60,8 @@ syscall_handler (struct intr_frame *f UNUSED)
       f->eax = remove((const char*)args[0]);
       break;
     case SYS_OPEN:
+      get_args(f->esp+4, &args[0], 1);
+      f->eax = open((const char*)args[0]);
       break;
     case SYS_FILESIZE:
       break;
@@ -78,8 +90,10 @@ void halt(){
 }
 
 void exit(int status){
+ 
   printf("%s: exit(%d)\n", thread_current()->name,status);
-  printf("%s\n",((char *) 0x20101234));
+   thread_current()->exit_status = status; 
+  //printf("%s\n",((char *) 0x20101234));
   thread_exit();
 }
 
@@ -87,6 +101,8 @@ bool create(const char* file, unsigned initial_size){
   if(file == NULL){
     exit(-1);
   }
+  if(!file_available(file))
+    exit(-1);
   lock_acquire(&filesys_lock);
   bool file_creation = filesys_create(file, initial_size);
   lock_release(&filesys_lock);
@@ -105,7 +121,7 @@ tid_t exec(const char* cmd_line){
 }
 
 int wait(tid_t pid){
-  process_wait(pid);
+  return process_wait(pid);
 }
 
 int write(int fd, const void* buffer, unsigned size){ 
@@ -115,6 +131,29 @@ int write(int fd, const void* buffer, unsigned size){
   }
   return -1;
 }
+
+int open(const char* file){
+  if(!file_available(file))
+    return -1;
+
+  lock_acquire(&filesys_lock);
+  struct file* f = filesys_open(file);
+  lock_release(&filesys_lock);
+  
+  if (f ==NULL)
+    return -1; 
+  else
+  {
+    struct one_file* new_file = malloc(sizeof(struct one_file));
+    new_file->fd = new_fid();
+    new_file->file = f;
+    list_push_back(&thread_current()->files_list, &new_file->file_elem);
+    return new_file->fd;
+  } 
+ 
+  
+}
+
 
 void available_addr(void* addr){
   if(!is_user_vaddr(addr)){
@@ -130,4 +169,19 @@ void get_args(void* esp, int* arg, int count){
     available_addr((void*)temp);
     arg[i] = *temp;
   }
+}
+
+int file_available(void* addr){
+  if (addr > PHYS_BASE)
+    return 0;
+  if (addr < 0x08048000)
+    return 0;
+  if (pagedir_get_page(thread_current()->pagedir, addr) == NULL)
+    return 0;
+  return 1;
+}
+
+int new_fid(void){
+  static int fid = 2;
+  return fid++;
 }
