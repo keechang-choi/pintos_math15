@@ -9,6 +9,7 @@
 #include "threads/synch.h"
 #include "filesys/filesys.h"
 #include "userprog/pagedir.h"
+#include "filesys/file.h"
 static void syscall_handler (struct intr_frame *);
 struct lock filesys_lock;
 
@@ -64,18 +65,28 @@ syscall_handler (struct intr_frame *f UNUSED)
       f->eax = open((const char*)args[0]);
       break;
     case SYS_FILESIZE:
+      get_args(f->esp+4, &args[0], 1);
+      f->eax = filesize((int)args[0]);
       break;
     case SYS_READ:
+      get_args(f->esp+4, &args[0], 3);
+      f->eax = read((int)args[0], (void*)args[1],(unsigned)args[2]);
       break;
     case SYS_WRITE:
       get_args(f->esp+4, &args[0], 3);
       f->eax = write((int)args[0],(const void*)args[1], (unsigned int)args[2]);
       break;
     case SYS_SEEK:
+      get_args(f->esp+4, &args[0], 2);
+      seek((int)args[0], (unsigned)args[1]);
       break;
     case SYS_TELL:
+      get_args(f->esp+4, &args[0], 1);
+      f->eax = tell((int)args[0]);
       break;
     case SYS_CLOSE:
+      get_args(f->esp+4, &args[0], 1);
+      close((int)args[0]);
       break;
     default:
       break;              
@@ -129,7 +140,19 @@ int write(int fd, const void* buffer, unsigned size){
     putbuf(buffer, size);
     return size;
   }
-  return -1;
+  struct file *file = file_search_by_fd(fd);
+
+  if(file==NULL)
+    return -1;
+  if(!file_available(buffer))
+    exit(-1);
+
+  lock_acquire(&filesys_lock);
+  off_t written_bytes = file_write(file, buffer, size);
+
+  lock_release(&filesys_lock);
+  return written_bytes;
+
 }
 
 int open(const char* file){
@@ -144,14 +167,72 @@ int open(const char* file){
     return -1; 
   else
   {
-    struct one_file* new_file = malloc(sizeof(struct one_file));
+    struct one_file* new_file = (struct one_file*)malloc(sizeof(struct one_file));
     new_file->fd = new_fid();
     new_file->file = f;
     list_push_back(&thread_current()->files_list, &new_file->file_elem);
     return new_file->fd;
   } 
- 
+}
+
+int read(int fd, void* buffer,  unsigned size){
+  if(fd==0){
+    return input_getc();
+  }
+
+  struct file *file = file_search_by_fd(fd);
+
+  if(file==NULL)
+    return -1;
+  if(!file_available(buffer))
+    exit(-1);
+
+  lock_acquire(&filesys_lock);
+  off_t readed_bytes = file_read(file, buffer, size);
+
+  lock_release(&filesys_lock);
+  return readed_bytes;
+}
+
+int filesize(int fd){
   
+  struct file *file = file_search_by_fd(fd);
+  if(file==NULL)
+    return -1;
+
+  lock_acquire(&filesys_lock);
+  off_t file_lengths = file_length(file);  
+  lock_release(&filesys_lock);
+
+  return file_lengths;
+}
+
+void seek(int fd, unsigned position){
+  struct file *file = file_search_by_fd(fd);
+  if(file==NULL)
+    exit(-1);
+  lock_acquire(&filesys_lock);
+  file_seek(file, position);
+  lock_release(&filesys_lock);
+}
+
+unsigned tell(int fd){
+  struct file *file = file_search_by_fd(fd);
+  if(file==NULL)
+    exit(-1);
+  lock_acquire(&filesys_lock);
+  unsigned position = file_tell(file);
+  lock_release(&filesys_lock);
+  return position;
+}
+
+void close(int fd){
+  struct file *file = file_search_by_fd(fd);
+  if(file==NULL)
+    exit(-1);
+  lock_acquire(&filesys_lock);
+  file_close(file);
+  lock_release(&filesys_lock);
 }
 
 
@@ -184,4 +265,15 @@ int file_available(void* addr){
 int new_fid(void){
   static int fid = 2;
   return fid++;
+}
+
+struct file* file_search_by_fd(int fd){
+  struct list_elem* e;
+  for(e = list_begin(&thread_current()->files_list); e!=list_end(&thread_current()->files_list); e = list_next(e)){
+    struct one_file* temp = list_entry(e, struct one_file, file_elem);
+    if(temp->fd == fd){
+      return temp->file;
+    }
+  }
+  return NULL;
 }
