@@ -112,13 +112,15 @@ struct thread
    int exit_status;
    struct semaphore waiting_sema;
    struct semaphore load_sema;
+   struct lock exit_sema;
    
 
   /*file control */
    struct list files_list;
 
    /* flag */
-   bool alive;
+   bool load_flag;
+   bool exit_flag;
 
   };
 

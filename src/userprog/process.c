@@ -46,10 +46,21 @@ process_execute (const char *file_name_origin)
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   struct thread* child = thread_search(tid);
-  if(child==NULL)
-      printf("CHild OMG\n");
+  if(child==NULL){
+    free(temp);
+    exit(-1);
+  }
+   
   sema_down(&child->load_sema);
   
+  /* load fail */
+  if( child->load_flag == false){
+
+    free(temp);
+    return -1;
+  }
+
+
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
   else
@@ -79,12 +90,14 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
+  thread_current()->load_flag = success;
+
   sema_up(&thread_current()->load_sema);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
-    thread_exit ();
+    thread_exit();
  
   
 
@@ -121,9 +134,14 @@ process_wait (tid_t child_tid UNUSED)
   if(child == NULL){
     return -1;
   }
+  if(child->exit_flag)
+    return child->exit_status;
+
   list_remove(&child->child_elem);
   sema_down(&child->waiting_sema);
+  child->exit_flag = true;
   int exit_val = child->exit_status;
+  
   thread_unblock(child);
   //printf("wait??\n");
  
@@ -136,6 +154,10 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  
+  /* close files */
+  
+  
   
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -154,7 +176,8 @@ process_exit (void)
       pagedir_destroy (pd);
     }
 
-  /* wait handle */
+    
+  
   
 }
 
@@ -274,13 +297,13 @@ load (const char *file_name_origin, void (**eip) (void), void **esp)
   /* Open executable file. */
 
   file = filesys_open (file_name);
- 
+  
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
-
+  
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -365,6 +388,7 @@ load (const char *file_name_origin, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
+
   file_close (file);
   free(temp);
   return success;

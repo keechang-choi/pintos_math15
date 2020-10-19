@@ -1,6 +1,7 @@
 #include "userprog/syscall.h"
 #include "userprog/process.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <syscall-nr.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
@@ -10,14 +11,11 @@
 #include "filesys/filesys.h"
 #include "userprog/pagedir.h"
 #include "filesys/file.h"
+#include "lib/string.h"
+
 static void syscall_handler (struct intr_frame *);
 struct lock filesys_lock;
 
-struct one_file{
-  struct file* file;
-  struct list_elem file_elem;
-  int fd;
-};
 
 
 
@@ -103,7 +101,16 @@ void halt(){
 void exit(int status){
  
   printf("%s: exit(%d)\n", thread_current()->name,status);
+  
    thread_current()->exit_status = status; 
+  /*
+  struct list_elem* e;
+  for(e = list_begin(&thread_current()->files_list); e!=list_end(&thread_current()->files_list); e = list_next(e)){
+    struct one_file* temp = list_entry(e, struct one_file, file_elem);
+    list_remove(&temp->file_elem);
+    free(temp);
+  }
+   */
   //printf("%s\n",((char *) 0x20101234));
   thread_exit();
 }
@@ -148,19 +155,25 @@ int write(int fd, const void* buffer, unsigned size){
     exit(-1);
 
   lock_acquire(&filesys_lock);
+  
   off_t written_bytes = file_write(file, buffer, size);
-
   lock_release(&filesys_lock);
+  
   return written_bytes;
 
 }
 
 int open(const char* file){
   if(!file_available(file))
-    return -1;
+    exit(-1);
 
   lock_acquire(&filesys_lock);
   struct file* f = filesys_open(file);
+  
+  if(strcmp(file, thread_current()->name)==0){
+    file_deny_write(f);
+  }
+    
   lock_release(&filesys_lock);
   
   if (f ==NULL)
@@ -171,6 +184,7 @@ int open(const char* file){
     new_file->fd = new_fid();
     new_file->file = f;
     list_push_back(&thread_current()->files_list, &new_file->file_elem);
+    //file_deny_write(f);
     return new_file->fd;
   } 
 }
@@ -227,12 +241,16 @@ unsigned tell(int fd){
 }
 
 void close(int fd){
-  struct file *file = file_search_by_fd(fd);
-  if(file==NULL)
+  struct one_file *file = file_search_and_delete_by_fd(fd);
+  if(file ==NULL)
     exit(-1);
   lock_acquire(&filesys_lock);
-  file_close(file);
+
+  //file_allow_write(file);
+  file_close(file->file);
+  
   lock_release(&filesys_lock);
+  free(file);
 }
 
 
@@ -253,7 +271,7 @@ void get_args(void* esp, int* arg, int count){
 }
 
 int file_available(void* addr){
-  if (addr > PHYS_BASE)
+  if (addr >= PHYS_BASE)
     return 0;
   if (addr < 0x08048000)
     return 0;
@@ -273,6 +291,19 @@ struct file* file_search_by_fd(int fd){
     struct one_file* temp = list_entry(e, struct one_file, file_elem);
     if(temp->fd == fd){
       return temp->file;
+    }
+  }
+  return NULL;
+}
+
+struct one_file* file_search_and_delete_by_fd(int fd){
+  struct list_elem* e;
+  for(e = list_begin(&thread_current()->files_list); e!=list_end(&thread_current()->files_list); e = list_next(e)){
+    struct one_file* temp = list_entry(e, struct one_file, file_elem);
+    if(temp->fd == fd){
+      list_remove(&temp->file_elem);
+      
+      return temp;
     }
   }
   return NULL;

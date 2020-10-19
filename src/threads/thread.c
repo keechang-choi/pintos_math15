@@ -285,6 +285,16 @@ thread_exit (void)
   
 
 #ifdef USERPROG
+  struct list_elem* e;
+  struct one_file* temp, *next;
+  struct thread* cur = thread_current();
+  for(e = list_begin(&cur->files_list); e!=list_end(&cur->files_list); e = next){
+    temp = list_entry(e, struct one_file, file_elem);
+    next = list_next(e);
+    file_close(temp->file);
+    free(temp);
+  }
+
   sema_up(&thread_current()->waiting_sema);
   enum intr_level old_level;
   old_level = intr_disable ();
@@ -471,7 +481,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
- 
+  t->exit_flag = false;
   list_init(&t->child_list);
 
   old_level = intr_disable ();
