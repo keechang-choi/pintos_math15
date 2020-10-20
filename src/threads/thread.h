@@ -7,7 +7,11 @@
 #include <stdint.h>
 #include "threads/synch.h"
 
-
+struct one_file{
+  struct file* file;
+  //struct list_elem file_elem;
+  int fd;
+};
 /* States in a thread's life cycle. */
 enum thread_status
   {
@@ -112,11 +116,16 @@ struct thread
    int exit_status;
    struct semaphore waiting_sema;
    struct semaphore load_sema;
-   struct lock exit_sema;
+   struct semaphore exit_sema;
+   struct semaphore exits_sema;
+   
    
 
   /*file control */
-   struct list files_list;
+   struct one_file files_list[150];
+   struct file* executable;
+   int file_number;
+   int fd;
 
    /* flag */
    bool load_flag;

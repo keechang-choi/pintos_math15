@@ -6,7 +6,6 @@
 #include "threads/thread.h"
 typedef int tid_t;
 
-int exit_status;
 void syscall_init (void);
 
 
@@ -29,5 +28,5 @@ unsigned tell(int);
 void close(int);
 
 struct file* file_search_by_fd(int);
-struct one_file* file_search_and_delete_by_fd(int);
+struct file* file_search_and_delete_by_fd(int);
 #endif /* userprog/syscall.h */

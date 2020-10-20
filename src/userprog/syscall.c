@@ -16,8 +16,8 @@
 static void syscall_handler (struct intr_frame *);
 struct lock filesys_lock;
 
-
-
+int open_count = 0;
+int close_count = 0;
 
 void
 syscall_init (void) 
@@ -30,7 +30,7 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-  int args[10];
+  int args[5];
   
   switch(*(int*)f->esp){
     case SYS_HALT:
@@ -43,7 +43,7 @@ syscall_handler (struct intr_frame *f UNUSED)
       break;
     case SYS_EXEC: 
       get_args(f->esp+4, &args[0], 1);
-      f->eax = exec((const char*)args[0]);
+      f->eax = exec((const char*)args[0]);  
       break;
     case SYS_WAIT:
       get_args(f->esp+4, &args[0], 1);
@@ -61,6 +61,7 @@ syscall_handler (struct intr_frame *f UNUSED)
     case SYS_OPEN:
       get_args(f->esp+4, &args[0], 1);
       f->eax = open((const char*)args[0]);
+      open_count++;
       break;
     case SYS_FILESIZE:
       get_args(f->esp+4, &args[0], 1);
@@ -85,11 +86,12 @@ syscall_handler (struct intr_frame *f UNUSED)
     case SYS_CLOSE:
       get_args(f->esp+4, &args[0], 1);
       close((int)args[0]);
+      
       break;
     default:
       break;              
   }
-  
+    
   //printf ("system call! %d\n", *(int*)f->esp);
   //thread_exit ();
 }
@@ -101,17 +103,35 @@ void halt(){
 void exit(int status){
  
   printf("%s: exit(%d)\n", thread_current()->name,status);
-  
+   //sema_down(&thread_current()->exits_sema);
    thread_current()->exit_status = status; 
-  /*
-  struct list_elem* e;
-  for(e = list_begin(&thread_current()->files_list); e!=list_end(&thread_current()->files_list); e = list_next(e)){
-    struct one_file* temp = list_entry(e, struct one_file, file_elem);
-    list_remove(&temp->file_elem);
-    free(temp);
+   thread_current()->exit_flag = true;
+   
+ 
+  //lock_acquire(&filesys_lock); 
+  int index = thread_current()->file_number;
+  if(index>0){
+    for(int i=0; i<index; i++){
+      file_close(thread_current()->files_list[i].file);
+      close_count++;
+    }
   }
-   */
-  //printf("%s\n",((char *) 0x20101234));
+  //lock_release(&filesys_lock);
+
+  thread_current()->file_number = 0;
+
+  struct list_elem* e;
+  struct thread* t, *next;
+  for (e = list_begin(&thread_current()->child_list); e != list_end(&thread_current()->child_list); e = next) {
+    t = list_entry(e, struct thread, child_elem);
+    process_wait(t->tid);
+    next = list_next(e);  
+  }
+
+  //sema_up(&thread_current()->exits_sema);
+  
+  sema_up(&thread_current()->waiting_sema);
+  sema_down(&thread_current()->exit_sema);
   thread_exit();
 }
 
@@ -132,7 +152,7 @@ bool remove(const char* file){
 }
 
 tid_t exec(const char* cmd_line){
-  lock_acquire(&filesys_lock);
+ lock_acquire(&filesys_lock);
   tid_t t = process_execute(cmd_line);
   lock_release(&filesys_lock);
   return t;
@@ -169,8 +189,10 @@ int open(const char* file){
 
   lock_acquire(&filesys_lock);
   struct file* f = filesys_open(file);
-  
+  //if(thread_current()->tid==5)
+  //  printf("file open.. %x\n",(unsigned)f);
   if(strcmp(file, thread_current()->name)==0){
+ 
     file_deny_write(f);
   }
     
@@ -180,12 +202,13 @@ int open(const char* file){
     return -1; 
   else
   {
-    struct one_file* new_file = (struct one_file*)malloc(sizeof(struct one_file));
-    new_file->fd = new_fid();
-    new_file->file = f;
-    list_push_back(&thread_current()->files_list, &new_file->file_elem);
-    //file_deny_write(f);
-    return new_file->fd;
+    int index = thread_current()->file_number;
+    thread_current()->files_list[index].fd = thread_current()->fd;
+    thread_current()->files_list[index].file = f;
+    thread_current()->file_number +=1;
+    thread_current()->fd += 1;
+   
+    return thread_current()->files_list[index].fd;
   } 
 }
 
@@ -241,16 +264,15 @@ unsigned tell(int fd){
 }
 
 void close(int fd){
-  struct one_file *file = file_search_and_delete_by_fd(fd);
+  struct file *file = file_search_and_delete_by_fd(fd);
   if(file ==NULL)
     exit(-1);
   lock_acquire(&filesys_lock);
 
   //file_allow_write(file);
-  file_close(file->file);
+  file_close(file);
   
   lock_release(&filesys_lock);
-  free(file);
 }
 
 
@@ -280,12 +302,9 @@ int file_available(void* addr){
   return 1;
 }
 
-int new_fid(void){
-  static int fid = 2;
-  return fid++;
-}
 
 struct file* file_search_by_fd(int fd){
+  /*
   struct list_elem* e;
   for(e = list_begin(&thread_current()->files_list); e!=list_end(&thread_current()->files_list); e = list_next(e)){
     struct one_file* temp = list_entry(e, struct one_file, file_elem);
@@ -294,9 +313,17 @@ struct file* file_search_by_fd(int fd){
     }
   }
   return NULL;
+  */
+ for (int i=0; i<thread_current()->file_number; i++){
+   if (thread_current()->files_list[i].fd == fd)
+    return thread_current()->files_list[i].file;
+ }
+ return NULL;
+
 }
 
-struct one_file* file_search_and_delete_by_fd(int fd){
+struct file* file_search_and_delete_by_fd(int fd){
+  /*
   struct list_elem* e;
   for(e = list_begin(&thread_current()->files_list); e!=list_end(&thread_current()->files_list); e = list_next(e)){
     struct one_file* temp = list_entry(e, struct one_file, file_elem);
@@ -307,4 +334,17 @@ struct one_file* file_search_and_delete_by_fd(int fd){
     }
   }
   return NULL;
+  */
+  for (int i=0; i<thread_current()->file_number; i++){
+   if (thread_current()->files_list[i].fd == fd){
+     struct file* file = thread_current()->files_list[i].file;
+     int end = thread_current()->file_number -1;
+     thread_current()->files_list[i].file = thread_current()->files_list[end].file;
+     thread_current()->files_list[i].fd = thread_current()->files_list[end].fd;
+     thread_current()->file_number -=1;
+    return file;
+   }
+    
+ }
+ return NULL;
 }

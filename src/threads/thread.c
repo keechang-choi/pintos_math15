@@ -285,21 +285,6 @@ thread_exit (void)
   
 
 #ifdef USERPROG
-  struct list_elem* e;
-  struct one_file* temp, *next;
-  struct thread* cur = thread_current();
-  for(e = list_begin(&cur->files_list); e!=list_end(&cur->files_list); e = next){
-    temp = list_entry(e, struct one_file, file_elem);
-    next = list_next(e);
-    file_close(temp->file);
-    free(temp);
-  }
-
-  sema_up(&thread_current()->waiting_sema);
-  enum intr_level old_level;
-  old_level = intr_disable ();
-  thread_block();
-  intr_set_level (old_level);
 
   process_exit ();
 #endif
@@ -487,11 +472,16 @@ init_thread (struct thread *t, const char *name, int priority)
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
 
-
   /*child process.. waiting.. */
   sema_init(&t->waiting_sema, 0);
   sema_init(&t->load_sema,0);
-  list_init(&t->files_list);
+  sema_init(&t->exit_sema, 0);
+  
+  //list_init(&t->files_list);
+
+  t->file_number = 0;
+  t->fd = 2;
+  t->executable = NULL;
   
 
   intr_set_level (old_level);
@@ -566,7 +556,7 @@ thread_schedule_tail (struct thread *prev)
   if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread) 
     {
       ASSERT (prev != cur);
-      //palloc_free_page (prev);
+      palloc_free_page (prev);
     }
 }
 
