@@ -173,6 +173,10 @@ process_exit (void)
 
   //printf("%s exiting..\n",thread_current()->name);
   
+ /* if(cur->executable != NULL){
+    file_close(cur->executable);
+  }*/
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -395,8 +399,14 @@ load (const char *file_name_origin, void (**eip) (void), void **esp)
 
  done:
 
+
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+
+  if(success){
+	t->executable = file;
+  	file_deny_write(file);
+  }
+  //file_close (file);
   free(temp);
   return success;
 }

@@ -54,11 +54,10 @@ syscall_handler (struct intr_frame *f UNUSED)
       get_args(f->esp+4, &args[0], 2);
       f->eax = create((const char*)args[0], (unsigned)args[1]);
       break;
- /*   case SYS_REMOVE:
+    case SYS_REMOVE:
       get_args(f->esp+4, &args[0], 1);
       f->eax = remove((const char*)args[0]);
       break;
-    */
     case SYS_OPEN:
       get_args(f->esp+4, &args[0], 1);
       f->eax = open((const char*)args[0]);
@@ -78,7 +77,7 @@ syscall_handler (struct intr_frame *f UNUSED)
       get_args(f->esp+4, &args[0], 3);
       f->eax = write((int)args[0],(const void*)args[1], (unsigned int)args[2]);
       break;
-    /*
+    
     case SYS_SEEK:
       get_args(f->esp+4, &args[0], 2);
       seek((int)args[0], (unsigned)args[1]);
@@ -92,8 +91,9 @@ syscall_handler (struct intr_frame *f UNUSED)
       close((int)args[0]);
       
       break;
-   */ default:
-      	break;              
+    default:
+      exit(-1);
+      break;              
   }
 	
 //  printf ("system call %d!\n", *(int*)f->esp);
@@ -115,7 +115,7 @@ void exit(int status){
    thread_current()->exit_status = status; 
    thread_current()->exit_flag = true;
    
-/*
+
   //lock_acquire(&filesys_lock); 
   int index = thread_current()->file_number;
   if(index>0){
@@ -126,8 +126,13 @@ void exit(int status){
   }
   //lock_release(&filesys_lock);
 
+
+  if(thread_current()->executable != NULL){
+  	file_close(thread_current()->executable);
+  }
+  
   thread_current()->file_number = 0;
-*/
+
   struct list_elem* e;
   struct thread* t, *next;
   for (e = list_begin(&thread_current()->child_list); e != list_end(&thread_current()->child_list); e = next) {
@@ -206,10 +211,10 @@ int open(const char* file){
   //printf("file f : %p\n", f); 
   //if(thread_current()->tid==5)
   //  printf("file open.. %x\n",(unsigned)f);
-  if(strcmp(file, thread_current()->name)==0){
+  /*if(strcmp(file, thread_current()->name)==0){
  
-    file_deny_write(f);
-  }
+  //  file_deny_write(f);
+  }*/
     
   lock_release(&filesys_lock);
   if (f ==NULL)
@@ -259,7 +264,7 @@ int filesize(int fd){
 
   return file_lengths;
 }
-/*
+
 void seek(int fd, unsigned position){
   struct file *file = file_search_by_fd(fd);
   if(file==NULL)
@@ -290,7 +295,7 @@ void close(int fd){
   
   lock_release(&filesys_lock);
 }
-*/
+
 
 void available_addr(void* addr){
   if(!is_user_vaddr(addr)){
@@ -338,9 +343,9 @@ struct file* file_search_by_fd(int fd){
  return NULL;
 
 }
-/*
+
 struct file* file_search_and_delete_by_fd(int fd){
-  /---
+  /*
   struct list_elem* e;
   for(e = list_begin(&thread_current()->files_list); e!=list_end(&thread_current()->files_list); e = list_next(e)){
     struct one_file* temp = list_entry(e, struct one_file, file_elem);
@@ -351,7 +356,7 @@ struct file* file_search_and_delete_by_fd(int fd){
     }
   }
   return NULL;
-  ---/
+  */
   for (int i=0; i<thread_current()->file_number; i++){
    if (thread_current()->files_list[i].fd == fd){
      struct file* file = thread_current()->files_list[i].file;
@@ -365,4 +370,4 @@ struct file* file_search_and_delete_by_fd(int fd){
  }
  return NULL;
 }
-*/
+
