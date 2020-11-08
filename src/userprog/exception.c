@@ -2,8 +2,12 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include "userprog/gdt.h"
+#include "userprog/process.h"
 #include "threads/interrupt.h"
-#include "threads/thread.h"
+#include "threads/palloc.h"
+#include "threads/vaddr.h"
+#include "vm/suppage.h"
+
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -121,7 +125,7 @@ kill (struct intr_frame *f)
    [IA32-v3a] section 5.15 "Exception and Interrupt Reference". */
 static void
 page_fault (struct intr_frame *f) 
-{
+{  
   bool not_present;  /* True: not-present page, false: writing r/o page. */
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
@@ -147,15 +151,28 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-   exit(-1);
+
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
+   /*   
   printf ("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
   kill (f);
+  */
+   if(fault_addr <= PHYS_BASE && fault_addr >= 0x08048000){
+   struct sup_table_entry* sup_entry = sup_find_entry(&thread_current()->sup_table, fault_addr);
+   bool success;
+   success = handle_page_faultt(sup_entry);
+   if(!success)
+      exit(-1);
+   return;
+   }
+   exit(-1);
+   //kill(f);
 }
+
 

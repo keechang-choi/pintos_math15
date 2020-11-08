@@ -5,6 +5,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include <hash.h>
 #include "threads/synch.h"
 
 struct one_file{
@@ -130,6 +131,9 @@ struct thread
    /* flag */
    bool load_flag;
    bool exit_flag;
+
+   /* vm */
+   struct hash sup_table;
 
   };
 

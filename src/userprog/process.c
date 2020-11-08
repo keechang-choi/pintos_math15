@@ -18,6 +18,9 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/frame.h"
+#include "vm/suppage.h"
+
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -98,6 +101,8 @@ start_process (void *file_name_)
   char* file_name = file_name_;
   struct intr_frame if_;
   bool success;
+  
+  sup_table_init(&thread_current()->sup_table);
   /* Initialize interrupt frame and load executable. */
   
   memset (&if_, 0, sizeof if_);
@@ -106,6 +111,7 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   
+
   success = load (file_name, &if_.eip, &if_.esp);
   thread_current()->load_flag = success;
   
@@ -189,6 +195,7 @@ process_exit (void)
    
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
+  sup_table_destroy(&cur->sup_table);
   pd = cur->pagedir;
   if (pd != NULL) 
     {
@@ -326,7 +333,6 @@ load (const char *file_name_origin, void (**eip) (void), void **esp)
   /* Open executable file. */
 
   file = filesys_open (file_name);
- 
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
@@ -342,7 +348,7 @@ load (const char *file_name_origin, void (**eip) (void), void **esp)
       || ehdr.e_phentsize != sizeof (struct Elf32_Phdr)
       || ehdr.e_phnum > 1024) 
     {
-
+      //printf("%d %d %d %d %d\n", ehdr.e_type, ehdr.e_machine, ehdr.e_version, ehdr.e_phentsize, ehdr.e_phnum);
       printf ("load: %s: error loading executable\n", file_name);
       goto done; 
     }
@@ -408,7 +414,7 @@ load (const char *file_name_origin, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-
+ 
   if (!setup_stack (esp, file_string))
     goto done;
   
@@ -508,29 +514,46 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
+
+       
       /* Get a page of memory. */
+      /*
       uint8_t *kpage = palloc_get_page (PAL_USER);
       if (kpage == NULL)
         return false;
-
+      */
       /* Load this page. */
+      /*
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
           palloc_free_page (kpage);
           return false; 
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
+      */
       /* Add the page to the process's address space. */
+      /*
       if (!install_page (upage, kpage, writable)) 
         {
           palloc_free_page (kpage);
           return false; 
         }
+      */
+      struct sup_table_entry* sup_entry = malloc(sizeof(struct sup_table_entry));
+      sup_entry->uaddr = upage;
+      sup_entry->writable = writable;
+      sup_entry->is_loaded = false;
+      sup_entry->file = file;
+      sup_entry->offset = ofs;
+      sup_entry->read_bytes = page_read_bytes;
+      sup_entry->zero_bytes = page_zero_bytes;
+
+      sup_insert(&thread_current()->sup_table, sup_entry);
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
+      ofs += page_read_bytes;
       upage += PGSIZE;
     }
   return true;
@@ -601,6 +624,13 @@ setup_stack (void **esp, char* file_string)
   *(int*)*esp = 0;
   free(arguments);
       
+      struct sup_table_entry* sup_entry = malloc(sizeof(struct sup_table_entry));
+      sup_entry->file = NULL;
+      sup_entry->is_loaded = true;
+      sup_entry->uaddr = ((uint8_t *) PHYS_BASE) - PGSIZE;
+      sup_entry->writable = true;
+      sup_insert(&thread_current()->sup_table, sup_entry);
+      
       }
       else{
         palloc_free_page (kpage); 
@@ -631,4 +661,28 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+bool handle_page_faultt(struct sup_table_entry* sup_entry){
+  int a =1;
+  bool success;
+  uint8_t* kpage;
+  switch(a){
+    case 1:
+      kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+      if(kpage == NULL){
+        success = false;
+      }
+      else{
+        success = sup_load_file(kpage, sup_entry);
+      }
+      
+      break;
+
+    default:
+      break;
+  }
+  if(success)
+    success = install_page(sup_entry->uaddr, kpage, sup_entry->writable);
+  return success;
 }
