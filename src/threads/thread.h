@@ -4,6 +4,14 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
+
+#define FILESYS
+
+struct one_file{
+	struct file* file;
+	int fd;
+};
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -100,6 +108,29 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+    /* child process */
+   struct list child_list;
+   struct list_elem child_elem;
+   int create_success;
+   int process_done;
+   int exit_status;
+   struct semaphore waiting_sema;
+   struct semaphore load_sema;
+   struct semaphore exit_sema;
+   struct semaphore exits_sema;
+   
+   
+
+  /*file control */
+   struct one_file files_list[150];
+   struct file* executable;
+   int file_number;
+   int fd;
+
+   /* flag */
+   bool load_flag;
+   bool exit_flag;
+
   };
 
 /* If false (default), use round-robin scheduler.
@@ -137,5 +168,10 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+
+/* search child */
+struct thread* child_search(tid_t, struct list*);
+struct thread* thread_search(tid_t);
 
 #endif /* threads/thread.h */

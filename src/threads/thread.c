@@ -463,9 +463,20 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+  t->exit_flag = false;
+  list_init(&t->child_list);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
+    /*child process.. waiting.. */
+  sema_init(&t->waiting_sema, 0);
+  sema_init(&t->load_sema,0);
+  sema_init(&t->exit_sema, 0);
+
+  t->file_number = 0;
+  t->fd = 2;
+  t->executable = NULL;
+
   intr_set_level (old_level);
 }
 
@@ -578,7 +589,35 @@ allocate_tid (void)
 
   return tid;
 }
-
+
+
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+
+
+struct thread* child_search(tid_t t, struct list* list){
+  struct list_elem* e;
+  struct thread* temp;
+  for(e = list_begin(list); e!=list_end(list); e = list_next(e)){
+    temp = list_entry(e, struct thread, child_elem);
+   
+    if(temp->tid == t){
+      return temp;
+    }
+     
+  }
+  return NULL;
+}
+
+struct thread* thread_search(tid_t t){
+  struct list_elem* e;
+  for(e = list_begin(&all_list); e!=list_end(&all_list); e = list_next(e)){
+    struct thread* temp = list_entry(e, struct thread, allelem);
+    if(temp->tid == t)
+      return temp;
+  }
+  return NULL;
+}
