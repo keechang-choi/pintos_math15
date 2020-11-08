@@ -356,6 +356,7 @@ load (const char *file_name_origin, void (**eip) (void), void **esp)
   /* Read program headers. */
  
   file_ofs = ehdr.e_phoff;
+ 
   for (i = 0; i < ehdr.e_phnum; i++) 
     {
       struct Elf32_Phdr phdr;
@@ -403,6 +404,7 @@ load (const char *file_name_origin, void (**eip) (void), void **esp)
                   read_bytes = 0;
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
+              
               if (!load_segment (file, file_page, (void *) mem_page,
                                  read_bytes, zero_bytes, writable))
                 goto done;
@@ -504,7 +506,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
-
+  //printf("load...segment... with ofs %d\n", ofs);
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -540,7 +542,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         }
       */
       struct sup_table_entry* sup_entry = malloc(sizeof(struct sup_table_entry));
-      sup_entry->uaddr = upage;
+      sup_entry->uaddr = pg_round_down(upage);
       sup_entry->writable = writable;
       sup_entry->is_loaded = false;
       sup_entry->file = file;
@@ -549,7 +551,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       sup_entry->zero_bytes = page_zero_bytes;
 
       sup_insert(&thread_current()->sup_table, sup_entry);
-
+      //printf("%d %d %d %x %d\n", read_bytes, zero_bytes, ofs, sup_entry->uaddr, sup_entry->offset);
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -629,8 +631,8 @@ setup_stack (void **esp, char* file_string)
       sup_entry->is_loaded = true;
       sup_entry->uaddr = ((uint8_t *) PHYS_BASE) - PGSIZE;
       sup_entry->writable = true;
-      sup_insert(&thread_current()->sup_table, sup_entry);
       
+      sup_insert(&thread_current()->sup_table, sup_entry);
       }
       else{
         palloc_free_page (kpage); 
@@ -674,7 +676,9 @@ bool handle_page_faultt(struct sup_table_entry* sup_entry){
         success = false;
       }
       else{
+        
         success = sup_load_file(kpage, sup_entry);
+        
       }
       
       break;

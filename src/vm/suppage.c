@@ -5,9 +5,11 @@
 #include "userprog/pagedir.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include <stdlib.h>
 
 void sup_table_init(struct hash* sup_table){
     hash_init(sup_table, sup_val, sup_less, NULL);
+    lock_init(&sup_lock);
 }
 
 int sup_val(struct hash_elem* hash, void* aux){
@@ -61,18 +63,25 @@ void sup_table_destroy(struct hash* sup_table){
 
 bool sup_load_file(void* kaddr, struct sup_table_entry* sup_entry){
     if(sup_entry->file){
-       
-        size_t actual_read_bytes = file_read_at(sup_entry->file, kaddr, sup_entry->read_bytes,  sup_entry->offset);
-    
-        if(actual_read_bytes != sup_entry->read_bytes){
-            pagedir_clear_page(thread_current()->pagedir, sup_entry->uaddr);
-            return false;
-        }    
-        else
-        {
-            memset(kaddr + actual_read_bytes, 0, sup_entry->zero_bytes);
+        if(sup_entry->read_bytes >0){
+            size_t actual_read_bytes = file_read_at(sup_entry->file, kaddr, sup_entry->read_bytes,  sup_entry->offset);
+        
+            if(actual_read_bytes != sup_entry->read_bytes){
+                pagedir_clear_page(thread_current()->pagedir, sup_entry->uaddr);
+                return false;
+            }    
+            else
+            {
+                memset(kaddr + actual_read_bytes, 0, sup_entry->zero_bytes);
+            }
+            return true; 
         }
-        return true;
+        /* all_zero page */
+        else{
+            ASSERT(sup_entry->zero_bytes == PGSIZE);
+            memset(kaddr, 0, sup_entry->zero_bytes);
+            return true;
+        }
     }
     
     return false;

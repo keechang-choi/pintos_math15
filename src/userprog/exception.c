@@ -163,14 +163,18 @@ page_fault (struct intr_frame *f)
           user ? "user" : "kernel");
   kill (f);
   */
+  
    if(fault_addr <= PHYS_BASE && fault_addr >= 0x08048000){
    struct sup_table_entry* sup_entry = sup_find_entry(&thread_current()->sup_table, fault_addr);
+   void* esp = f->esp;
+   
    bool success;
    success = handle_page_faultt(sup_entry);
    if(!success)
       exit(-1);
    return;
    }
+   
    exit(-1);
    //kill(f);
 }

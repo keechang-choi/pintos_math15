@@ -213,6 +213,7 @@ int open(const char* file){
 }
 
 int read(int fd, void* buffer,  unsigned size){
+  
   if(fd==0){
     return input_getc();
   }
@@ -221,9 +222,11 @@ int read(int fd, void* buffer,  unsigned size){
 
   if(file==NULL)
     return -1;
-  if(!file_available(buffer))
-    exit(-1);
 
+  if(!file_available(buffer)){
+    exit(-1);
+  }
+  
   lock_acquire(&filesys_lock);
   off_t readed_bytes = file_read(file, buffer, size);
 
@@ -293,12 +296,20 @@ void get_args(void* esp, int* arg, int count){
 }
 
 int file_available(void* addr){
-  if (addr >= PHYS_BASE)
+ 
+  if (addr >= PHYS_BASE){
     return 0;
-  if (addr < 0x08048000)
+  }
+  
+  if (addr < 0x08048000){
     return 0;
-  if (pagedir_get_page(thread_current()->pagedir, addr) == NULL)
+  }
+  /*
+  if (pagedir_get_page(thread_current()->pagedir, pg_round_down(addr)) == NULL){
+
     return 0;
+  }
+  */
   return 1;
 }
 

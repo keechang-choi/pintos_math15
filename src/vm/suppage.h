@@ -1,7 +1,7 @@
 #ifndef SUP_PAGE
 #define SUP_PAGE
 #include <hash.h>
-
+struct lock sup_lock;
 struct sup_table_entry{
     void* uaddr;
     bool writable;
