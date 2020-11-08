@@ -314,7 +314,7 @@ void get_args(void* esp, int* arg, int count){
 }
 
 int file_available(void* addr){
-  return 1;
+  //return 1;
   if (addr >= PHYS_BASE)
     return 0;
   if (addr < 0x08048000)
@@ -326,37 +326,14 @@ int file_available(void* addr){
 
 
 struct file* file_search_by_fd(int fd){
- /*
-  struct list_elem* e;
-  for(e = list_begin(&thread_current()->files_list); e!=list_end(&thread_current()->files_list); e = list_next(e)){
-    struct one_file* temp = list_entry(e, struct one_file, file_elem);
-    if(temp->fd == fd){
-      return temp->file;
-    }
-  }
-  return NULL;
-  */
  for (int i=0; i<thread_current()->file_number; i++){
    if (thread_current()->files_list[i].fd == fd)
     return thread_current()->files_list[i].file;
  }
  return NULL;
-
 }
 
 struct file* file_search_and_delete_by_fd(int fd){
-  /*
-  struct list_elem* e;
-  for(e = list_begin(&thread_current()->files_list); e!=list_end(&thread_current()->files_list); e = list_next(e)){
-    struct one_file* temp = list_entry(e, struct one_file, file_elem);
-    if(temp->fd == fd){
-      list_remove(&temp->file_elem);
-      
-      return temp;
-    }
-  }
-  return NULL;
-  */
   for (int i=0; i<thread_current()->file_number; i++){
    if (thread_current()->files_list[i].fd == fd){
      struct file* file = thread_current()->files_list[i].file;
@@ -365,8 +342,7 @@ struct file* file_search_and_delete_by_fd(int fd){
      thread_current()->files_list[i].fd = thread_current()->files_list[end].fd;
      thread_current()->file_number -=1;
     return file;
-   }
-    
+   } 
  }
  return NULL;
 }
