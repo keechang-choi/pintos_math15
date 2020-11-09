@@ -153,8 +153,8 @@ bool create(const char* file, unsigned initial_size){
   if(file == NULL){
     exit(-1);
   }
-  if(!file_available(file))
-    exit(-1);
+  //if(!file_available(file))
+  //  exit(-1);
   lock_acquire(&filesys_lock);
   bool file_creation = filesys_create(file, initial_size);
   lock_release(&filesys_lock);
@@ -298,10 +298,13 @@ void close(int fd){
 
 
 void available_addr(void* addr){
-  if(!is_user_vaddr(addr)){
-    exit(-1);
-    return;
+  if(is_user_vaddr(addr)){
+    if(pagedir_get_page(thread_current()->pagedir, addr) == NULL)
+	    exit(-1);
+  }else{
+    exit(-1);	
   }
+  return;
 }
 
 void get_args(void* esp, int* arg, int count){
