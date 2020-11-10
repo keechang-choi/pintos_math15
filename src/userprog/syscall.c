@@ -30,7 +30,7 @@ static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
   int args[5];
-  //printf("system call start!\n");
+  //printf("system call!\n");
   //printf ("system call %d!\n", *(int*)f->esp);
   switch(*(int*)f->esp){
     case SYS_HALT:
@@ -114,9 +114,11 @@ void exit(int status){
   //sema_down(&thread_current()->exits_sema);
    thread_current()->exit_status = status; 
    thread_current()->exit_flag = true;
-   
-
-  //lock_acquire(&filesys_lock); 
+  
+  //already have filesys lock since exec 
+  if(filesys_lock.holder != thread_current())
+    lock_acquire(&filesys_lock); 
+  
   int index = thread_current()->file_number;
   if(index>0){
     for(int i=0; i<index; i++){
@@ -124,7 +126,7 @@ void exit(int status){
       close_count++;
     }
   }
-  //lock_release(&filesys_lock);
+  lock_release(&filesys_lock);
 
 
   if(thread_current()->executable != NULL){
@@ -150,11 +152,12 @@ void exit(int status){
 }
 
 bool create(const char* file, unsigned initial_size){
-  if(file == NULL){
+  
+  available_addr(file);
+  /*if(!file_available(file)){  
+    //printf("@@@wrong addr\n");
     exit(-1);
-  }
-  //if(!file_available(file))
-  //  exit(-1);
+  }*/
   lock_acquire(&filesys_lock);
   bool file_creation = filesys_create(file, initial_size);
   lock_release(&filesys_lock);
@@ -184,11 +187,11 @@ int write(int fd, const void* buffer, unsigned size){
     return size;
   }
   struct file *file = file_search_by_fd(fd);
-
   if(file==NULL)
     return -1;
-  if(!file_available(buffer))
-    exit(-1);
+  //if(!file_available(buffer))
+  //  exit(-1);
+  available_addr(buffer);
 
   lock_acquire(&filesys_lock);
   
@@ -201,18 +204,19 @@ int write(int fd, const void* buffer, unsigned size){
 
 int open(const char* file){
   //printf("@@open : %s\n", file);
-  if(!file_available(file))
-    exit(-1);
+  available_addr(file);
+  
+  //if(!file_available(file))
+  //  exit(-1);
 
-  if(file == NULL)
-	  return -1;
   lock_acquire(&filesys_lock);
   struct file* f = filesys_open(file);
   //printf("file f : %p\n", f); 
+  
   //if(thread_current()->tid==5)
   //  printf("file open.. %x\n",(unsigned)f);
-  /*if(strcmp(file, thread_current()->name)==0){
  
+  /*if(strcmp(file, thread_current()->name)==0){
   //  file_deny_write(f);
   }*/
     
@@ -239,12 +243,12 @@ int read(int fd, void* buffer,  unsigned size){
   struct file *file = file_search_by_fd(fd);
 
   if(file==NULL)
-    return -1;
-  if(!file_available(buffer))
-    exit(-1);
+    return -1; 
+  
+  available_addr(buffer);
+  //if(!file_available(buffer))
+  //  exit(-1);
 
-  if(!is_user_vaddr(buffer))
-	  exit(-1);
   lock_acquire(&filesys_lock);
   off_t readed_bytes = file_read(file, buffer, size);
 
@@ -299,8 +303,9 @@ void close(int fd){
 
 void available_addr(void* addr){
   if(is_user_vaddr(addr)){
-    if(pagedir_get_page(thread_current()->pagedir, addr) == NULL)
-	    exit(-1);
+    if(pagedir_get_page(thread_current()->pagedir, addr) == NULL){
+      exit(-1);
+    }
   }else{
     exit(-1);	
   }
