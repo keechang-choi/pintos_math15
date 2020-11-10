@@ -153,11 +153,13 @@ void exit(int status){
 
 bool create(const char* file, unsigned initial_size){
   
-  available_addr(file);
-  /*if(!file_available(file)){  
+  if(!file_available(file)){  
     //printf("@@@wrong addr\n");
     exit(-1);
-  }*/
+  }
+  
+  if(!file_available(file+strlen(file)))
+    exit(-1);
   lock_acquire(&filesys_lock);
   bool file_creation = filesys_create(file, initial_size);
   lock_release(&filesys_lock);
@@ -170,6 +172,10 @@ bool remove(const char* file){
 
 tid_t exec(const char* cmd_line){
   //printf("exec syscal : %s\n", cmd_line);
+  if(!file_available(cmd_line))
+    exit(-1);
+  if(!file_available(cmd_line+strlen(cmd_line)))
+    exit(-1);
   lock_acquire(&filesys_lock);
   tid_t t = process_execute(cmd_line);
   lock_release(&filesys_lock);
@@ -189,10 +195,9 @@ int write(int fd, const void* buffer, unsigned size){
   struct file *file = file_search_by_fd(fd);
   if(file==NULL)
     return -1;
-  //if(!file_available(buffer))
-  //  exit(-1);
-  available_addr(buffer);
-
+  if(!file_available(buffer))
+    exit(-1);
+  
   lock_acquire(&filesys_lock);
   
   off_t written_bytes = file_write(file, buffer, size);
@@ -204,11 +209,12 @@ int write(int fd, const void* buffer, unsigned size){
 
 int open(const char* file){
   //printf("@@open : %s\n", file);
-  available_addr(file);
   
-  //if(!file_available(file))
-  //  exit(-1);
+  if(!file_available(file))
+    exit(-1);
 
+  if(!file_available(file+strlen(file)))
+    exit(-1);
   lock_acquire(&filesys_lock);
   struct file* f = filesys_open(file);
   //printf("file f : %p\n", f); 
@@ -245,9 +251,8 @@ int read(int fd, void* buffer,  unsigned size){
   if(file==NULL)
     return -1; 
   
-  available_addr(buffer);
-  //if(!file_available(buffer))
-  //  exit(-1);
+  if(!file_available(buffer))
+    exit(-1);
 
   lock_acquire(&filesys_lock);
   off_t readed_bytes = file_read(file, buffer, size);
@@ -301,16 +306,14 @@ void close(int fd){
 }
 
 
+
 void available_addr(void* addr){
-  if(is_user_vaddr(addr)){
-    if(pagedir_get_page(thread_current()->pagedir, addr) == NULL){
-      exit(-1);
-    }
-  }else{
-    exit(-1);	
-  }
-  return;
+ if(!is_user_vaddr(addr)){
+   exit(-1); 
+   return; 
+ }
 }
+
 
 void get_args(void* esp, int* arg, int count){
   int* temp;
@@ -322,13 +325,13 @@ void get_args(void* esp, int* arg, int count){
 }
 
 int file_available(void* addr){
-  //return 1;
   if (addr >= PHYS_BASE)
     return 0;
   if (addr < 0x08048000)
     return 0;
   if (pagedir_get_page(thread_current()->pagedir, addr) == NULL)
     return 0;
+
   return 1;
 }
 
