@@ -184,18 +184,32 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
   
-  if(cur->executable != NULL){
-    
-    file_close(cur->executable);
-  }
   
-
   
- 
-   
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
+  //frame_delete_by_thread_exit(cur);
+  
+  int mapid = cur->mapid;
+  while(mapid>0){
+    munmap(mapid);
+    mapid -= 1;
+  }
+  
   sup_table_destroy(&cur->sup_table);
+  /*
+  int index = thread_current()->file_number;
+  if(index>0){
+    for(int i=0; i<index; i++){
+      file_close(thread_current()->files_list[i].file);
+    }
+  }
+  */
+  if(cur->executable != NULL){    
+    file_close(cur->executable);
+  }
+  sema_up(&thread_current()->waiting_sema);
+  sema_down(&thread_current()->exit_sema);
   pd = cur->pagedir;
   if (pd != NULL) 
     {
@@ -542,6 +556,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         }
       */
       struct sup_table_entry* sup_entry = malloc(sizeof(struct sup_table_entry));
+      sup_entry->type = NORMAL;
       sup_entry->uaddr = pg_round_down(upage);
       sup_entry->writable = writable;
       sup_entry->is_loaded = false;
@@ -549,8 +564,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       sup_entry->offset = ofs;
       sup_entry->read_bytes = page_read_bytes;
       sup_entry->zero_bytes = page_zero_bytes;
-
+      
       sup_insert(&thread_current()->sup_table, sup_entry);
+     
       //printf("%d %d %d %x %d\n", read_bytes, zero_bytes, ofs, sup_entry->uaddr, sup_entry->offset);
       /* Advance. */
       read_bytes -= page_read_bytes;
@@ -570,6 +586,7 @@ setup_stack (void **esp, char* file_string)
   bool success = false;
   char* token, *save_ptr;
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+ 
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
@@ -627,6 +644,7 @@ setup_stack (void **esp, char* file_string)
   free(arguments);
       
       struct sup_table_entry* sup_entry = malloc(sizeof(struct sup_table_entry));
+      sup_entry->type = NORMAL;
       sup_entry->file = NULL;
       sup_entry->is_loaded = true;
       sup_entry->uaddr = ((uint8_t *) PHYS_BASE) - PGSIZE;
@@ -666,12 +684,14 @@ install_page (void *upage, void *kpage, bool writable)
 }
 
 bool handle_page_faultt(struct sup_table_entry* sup_entry){
-  int a =1;
+  int a =sup_entry->type;
   bool success;
   uint8_t* kpage;
   switch(a){
-    case 1:
-      kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+    case NORMAL:
+    //printf("normal at %x\n", sup_entry->uaddr);
+      //kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+      kpage = frame_get_page(PAL_USER | PAL_ZERO, sup_entry->uaddr);
       if(kpage == NULL){
         success = false;
       }
@@ -682,7 +702,19 @@ bool handle_page_faultt(struct sup_table_entry* sup_entry){
       }
       
       break;
-
+    case MMAP_FILE:
+     //printf("mmap at %x\n", sup_entry->uaddr);
+      kpage = frame_get_page(PAL_USER | PAL_ZERO, sup_entry->uaddr);
+      if(kpage == NULL){
+        success = false;
+      }
+      else{
+        
+        success = sup_load_file(kpage, sup_entry);
+        
+      }
+      
+      break;
     default:
       break;
   }

@@ -26,7 +26,8 @@ int read(int, void*,  unsigned);
 void seek(int, unsigned);
 unsigned tell(int);
 void close(int);
-
+int mmap(int, void*);
+void munmap(int mapid);
 struct file* file_search_by_fd(int);
 struct file* file_search_and_delete_by_fd(int);
 #endif /* userprog/syscall.h */

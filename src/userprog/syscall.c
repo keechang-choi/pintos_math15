@@ -12,6 +12,8 @@
 #include "userprog/pagedir.h"
 #include "filesys/file.h"
 #include "lib/string.h"
+#include "vm/frame.h"
+#include "vm/suppage.h"
 
 static void syscall_handler (struct intr_frame *);
 struct lock filesys_lock;
@@ -86,7 +88,14 @@ syscall_handler (struct intr_frame *f UNUSED)
     case SYS_CLOSE:
       get_args(f->esp+4, &args[0], 1);
       close((int)args[0]);
-      
+      break;
+    case SYS_MMAP:
+      get_args(f->esp+4, &args[0], 2);
+      f->eax = mmap((int)args[0], (void *)args[1]);
+      break;
+    case SYS_MUNMAP:
+      get_args(f->esp+4, &args[0], 1);
+      munmap((int)args[0]);
       break;
     default:
       break;              
@@ -109,15 +118,15 @@ void exit(int status){
    
  
   //lock_acquire(&filesys_lock); 
-  int index = thread_current()->file_number;
+  
+   int index = thread_current()->file_number;
   if(index>0){
     for(int i=0; i<index; i++){
       file_close(thread_current()->files_list[i].file);
-      close_count++;
     }
   }
+  
   //lock_release(&filesys_lock);
-
   thread_current()->file_number = 0;
 
   struct list_elem* e;
@@ -129,9 +138,9 @@ void exit(int status){
   }
 
   //sema_up(&thread_current()->exits_sema);
-  
+  /*
   sema_up(&thread_current()->waiting_sema);
-  sema_down(&thread_current()->exit_sema);
+  sema_down(&thread_current()->exit_sema);*/
   thread_exit();
 }
 
@@ -186,18 +195,16 @@ int write(int fd, const void* buffer, unsigned size){
 int open(const char* file){
   if(!file_available(file))
     exit(-1);
-
   lock_acquire(&filesys_lock);
+  //printf("xes\n");
   struct file* f = filesys_open(file);
   //if(thread_current()->tid==5)
   //  printf("file open.. %x\n",(unsigned)f);
   if(strcmp(file, thread_current()->name)==0){
- 
     file_deny_write(f);
   }
     
   lock_release(&filesys_lock);
-  
   if (f ==NULL)
     return -1; 
   else
@@ -313,6 +320,19 @@ int file_available(void* addr){
   return 1;
 }
 
+bool valid_addr(void* addr){
+  if (addr >= PHYS_BASE){
+    return false;
+  }
+  
+  if (addr < 0x08048000){
+    return false;
+  }
+  if (addr != pg_round_down(addr))
+    return false;
+  return true;
+  
+}
 
 struct file* file_search_by_fd(int fd){
   /*
@@ -334,18 +354,7 @@ struct file* file_search_by_fd(int fd){
 }
 
 struct file* file_search_and_delete_by_fd(int fd){
-  /*
-  struct list_elem* e;
-  for(e = list_begin(&thread_current()->files_list); e!=list_end(&thread_current()->files_list); e = list_next(e)){
-    struct one_file* temp = list_entry(e, struct one_file, file_elem);
-    if(temp->fd == fd){
-      list_remove(&temp->file_elem);
-      
-      return temp;
-    }
-  }
-  return NULL;
-  */
+
   for (int i=0; i<thread_current()->file_number; i++){
    if (thread_current()->files_list[i].fd == fd){
      struct file* file = thread_current()->files_list[i].file;
@@ -358,4 +367,48 @@ struct file* file_search_and_delete_by_fd(int fd){
     
  }
  return NULL;
+}
+
+int mmap(int fd, void* addr){
+  struct thread* cur = thread_current();
+  struct file* file = file_search_by_fd(fd);
+  if(file == NULL)
+    return -1;
+  if(!valid_addr(addr))
+    return -1;
+  struct file* new_file = file_reopen(file);
+  if(new_file == NULL)
+    return -1;
+
+  struct mmap_entry* mmap_entry = malloc(sizeof(struct mmap_entry));
+  list_init(&mmap_entry->sup_entry_list);
+  mmap_entry->file = new_file;
+  mmap_entry->mapid = cur->mapid;
+  cur->mapid += 1;
+  bool success = mmap_create_sup_entries(mmap_entry, addr);
+  if(!success){
+    free(mmap_entry);
+    return -1;
+  }
+
+  list_push_back(&cur->mmap_list, &mmap_entry->mmap_elem);
+  return (cur->mapid -1);
+}
+
+void munmap(int mapid){
+  struct thread* cur = thread_current();
+  struct list_elem* e = list_begin(&cur->mmap_list);
+  struct mmap_entry* mmap_entry;
+  while(e!=list_end(&cur->mmap_list)){
+    mmap_entry = list_entry(e, struct mmap_entry, mmap_elem);
+    if (mmap_entry->mapid == mapid){
+      list_remove(&mmap_entry->mmap_elem);
+
+      lock_acquire(&filesys_lock);
+      mmap_delete_sup_list(mmap_entry, &cur->sup_table);
+      lock_release(&filesys_lock);
+    }
+    e = list_next(e);
+  }
+  
 }

@@ -1,8 +1,14 @@
 #ifndef SUP_PAGE
 #define SUP_PAGE
 #include <hash.h>
+
+#define NORMAL 1
+#define MMAP_FILE 2
+
 struct lock sup_lock;
 struct sup_table_entry{
+    int type;
+
     void* uaddr;
     bool writable;
     bool is_loaded;
@@ -11,6 +17,7 @@ struct sup_table_entry{
     size_t read_bytes;
     size_t zero_bytes;
     struct hash_elem sup_elem;
+    struct list_elem m_sup_elem;
 };
 void sup_table_init(struct hash* sup_table);
 int sup_val(struct hash_elem* hash, void* aux);
@@ -23,4 +30,14 @@ void sup_table_destroy(struct hash* sup_table);
 
 bool sup_load_file(void* kaddr, struct sup_table_entry* sup_entry);
 
+
+struct mmap_entry{
+    int mapid;
+    struct list sup_entry_list;
+    struct file* file;
+    struct list_elem mmap_elem;
+};
+
+bool mmap_create_sup_entries(struct mmap_entry* mmap_entry, void* addr);
+void mmap_delete_sup_list(struct mmap_entry* mmap_entry, struct hash*);
 #endif

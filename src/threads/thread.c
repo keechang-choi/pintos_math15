@@ -14,6 +14,7 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
+#include "vm/frame.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -113,7 +114,7 @@ thread_start (void)
 
   /* Start preemptive thread scheduling. */
   intr_enable ();
-
+  
   /* Wait for the idle thread to initialize idle_thread. */
   sema_down (&idle_started);
 }
@@ -483,6 +484,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->fd = 2;
   t->executable = NULL;
   
+  t->mapid = 1;
+  list_init(&t->mmap_list);
 
   intr_set_level (old_level);
 }

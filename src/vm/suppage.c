@@ -87,3 +87,62 @@ bool sup_load_file(void* kaddr, struct sup_table_entry* sup_entry){
     return false;
 }
 
+bool mmap_create_sup_entries(struct mmap_entry* mmap_entry, void* addr){
+    struct file* file = mmap_entry->file;
+    int read_bytes = file_length(file);
+    int zero_bytes = 0;
+    int ofs = 0;
+    bool success = true;
+    addr = pg_round_down(addr);
+
+    struct sup_table_entry check_entry;
+    file_seek (file, ofs);
+    while(read_bytes > 0){
+        size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+        size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+        /* handle mmap overlap */
+        if (sup_find_entry(&thread_current()->sup_table, addr) != NULL){
+            success = false;
+            break;
+        }
+
+        struct sup_table_entry* sup_entry = malloc(sizeof(struct sup_table_entry));
+        sup_entry->type = MMAP_FILE;
+        sup_entry->uaddr = pg_round_down(addr);
+        sup_entry->writable = true;
+        sup_entry->is_loaded = false;
+        sup_entry->file = file;
+        sup_entry->offset = ofs;
+        sup_entry->read_bytes = page_read_bytes;
+        sup_entry->zero_bytes = page_zero_bytes;
+        sup_insert(&thread_current()->sup_table, sup_entry);
+        list_push_back(&mmap_entry->sup_entry_list, &sup_entry->m_sup_elem);
+        //printf("%d %d %d %x %d\n", read_bytes, zero_bytes, ofs, sup_entry->uaddr, sup_entry->offset);
+        /* Advance. */
+        read_bytes -= page_read_bytes;
+        zero_bytes -= page_zero_bytes;
+        ofs += page_read_bytes;
+        addr += PGSIZE;
+    }
+
+    return success;
+}
+
+void mmap_delete_sup_list(struct mmap_entry* mmap_entry, struct hash* sup_table){
+    while (!list_empty (&mmap_entry->sup_entry_list))
+     {
+       struct list_elem *e = list_pop_front (&mmap_entry->sup_entry_list);
+       struct sup_table_entry* sup_entry = list_entry(e, struct sup_table_entry, m_sup_elem);
+     
+        /* appling changes in file through munmap */
+       if(pagedir_is_dirty(thread_current()->pagedir, sup_entry->uaddr)){
+           file_write_at(sup_entry->file, sup_entry->uaddr, sup_entry->read_bytes, sup_entry->offset);           
+       }
+       sup_delete(sup_table, sup_entry);
+       pagedir_clear_page(thread_current()->pagedir, sup_entry->uaddr);
+       palloc_free_page(pagedir_get_page(thread_current()->pagedir, sup_entry->uaddr));
+       free(sup_entry);
+     }
+    return;
+}
