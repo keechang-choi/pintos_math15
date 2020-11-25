@@ -135,6 +135,7 @@ struct thread
    /* vm */
    struct hash sup_table;
    struct list mmap_list;
+   struct lock f_lock;
    int mapid;
 
   };

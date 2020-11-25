@@ -214,7 +214,7 @@ int open(const char* file){
     thread_current()->files_list[index].file = f;
     thread_current()->file_number +=1;
     thread_current()->fd += 1;
-   
+    
     return thread_current()->files_list[index].fd;
   } 
 }
@@ -379,7 +379,7 @@ int mmap(int fd, void* addr){
   struct file* new_file = file_reopen(file);
   if(new_file == NULL)
     return -1;
-
+  
   struct mmap_entry* mmap_entry = malloc(sizeof(struct mmap_entry));
   list_init(&mmap_entry->sup_entry_list);
   mmap_entry->file = new_file;

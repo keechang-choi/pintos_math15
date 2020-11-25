@@ -477,6 +477,7 @@ init_thread (struct thread *t, const char *name, int priority)
   sema_init(&t->waiting_sema, 0);
   sema_init(&t->load_sema,0);
   sema_init(&t->exit_sema, 0);
+  lock_init(&t->f_lock);
   
   //list_init(&t->files_list);
 

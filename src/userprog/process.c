@@ -20,6 +20,7 @@
 #include "threads/vaddr.h"
 #include "vm/frame.h"
 #include "vm/suppage.h"
+#include "vm/swap.h"
 
 
 static thread_func start_process NO_RETURN;
@@ -36,7 +37,7 @@ process_execute (const char *file_name_origin)
   tid_t tid;
 
   char*temp = (char*)calloc(strlen(file_name_origin)+1,sizeof(char));
-
+  
   memcpy(temp, file_name_origin, strlen(file_name_origin)+1);
   char *save_ptr;
   file_name = strtok_r(temp, " ", &save_ptr);
@@ -44,8 +45,10 @@ process_execute (const char *file_name_origin)
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
+
+  //fn_copy = (char*)calloc(strlen(file_name_origin)+1,sizeof(char));
+  //memcpy(fn_copy, file_name_origin, strlen(file_name_origin));
   
-    
   strlcpy (fn_copy, file_name_origin, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
@@ -79,8 +82,11 @@ process_execute (const char *file_name_origin)
 
 
 
-  if (tid == TID_ERROR)
+  if (tid == TID_ERROR){
     palloc_free_page (fn_copy);
+    //free(fn_copy);
+    
+  }
   else
   {    
     //printf("cur::%s\n", thread_current()->name);
@@ -118,7 +124,9 @@ start_process (void *file_name_)
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
-    
+  //free(file_name);  
+
+
   sema_up(&thread_current()->load_sema);
   if (!success){
     //printf("lol...\n");
@@ -185,7 +193,7 @@ process_exit (void)
   uint32_t *pd;
   
   
-  
+  //printf("sex\n");
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   //frame_delete_by_thread_exit(cur);
@@ -195,7 +203,7 @@ process_exit (void)
     munmap(mapid);
     mapid -= 1;
   }
-  
+ 
   sup_table_destroy(&cur->sup_table);
   /*
   int index = thread_current()->file_number;
@@ -205,9 +213,11 @@ process_exit (void)
     }
   }
   */
+
   if(cur->executable != NULL){    
     file_close(cur->executable);
   }
+  
   sema_up(&thread_current()->waiting_sema);
   sema_down(&thread_current()->exit_sema);
   pd = cur->pagedir;
@@ -522,6 +532,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT (ofs % PGSIZE == 0);
   //printf("load...segment... with ofs %d\n", ofs);
   file_seek (file, ofs);
+  
   while (read_bytes > 0 || zero_bytes > 0) 
     {
       /* Calculate how to fill this page.
@@ -532,29 +543,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
 
        
-      /* Get a page of memory. */
-      /*
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
-        return false;
-      */
-      /* Load this page. */
-      /*
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-      */
-      /* Add the page to the process's address space. */
-      /*
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      */
       struct sup_table_entry* sup_entry = malloc(sizeof(struct sup_table_entry));
       sup_entry->type = NORMAL;
       sup_entry->uaddr = pg_round_down(upage);
@@ -564,9 +552,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       sup_entry->offset = ofs;
       sup_entry->read_bytes = page_read_bytes;
       sup_entry->zero_bytes = page_zero_bytes;
-      
+
       sup_insert(&thread_current()->sup_table, sup_entry);
-     
       //printf("%d %d %d %x %d\n", read_bytes, zero_bytes, ofs, sup_entry->uaddr, sup_entry->offset);
       /* Advance. */
       read_bytes -= page_read_bytes;
@@ -585,7 +572,7 @@ setup_stack (void **esp, char* file_string)
   uint8_t *kpage;
   bool success = false;
   char* token, *save_ptr;
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = frame_get_page (PAL_USER | PAL_ZERO, ((uint8_t *) PHYS_BASE) - PGSIZE);
  
   if (kpage != NULL) 
     {
@@ -649,11 +636,13 @@ setup_stack (void **esp, char* file_string)
       sup_entry->is_loaded = true;
       sup_entry->uaddr = ((uint8_t *) PHYS_BASE) - PGSIZE;
       sup_entry->writable = true;
-      
+      lock_acquire(&frame_lock);
+      frame_insert(sup_entry->uaddr,kpage);
+      lock_release(&frame_lock);
       sup_insert(&thread_current()->sup_table, sup_entry);
       }
       else{
-        palloc_free_page (kpage); 
+        frame_free_page (kpage); 
       }
     }
   
@@ -684,28 +673,32 @@ install_page (void *upage, void *kpage, bool writable)
 }
 
 bool handle_page_faultt(struct sup_table_entry* sup_entry){
+  //printf("fault _addr %x\n ", sup_entry->uaddr);
   int a =sup_entry->type;
   bool success;
   uint8_t* kpage;
+
   switch(a){
     case NORMAL:
     //printf("normal at %x\n", sup_entry->uaddr);
       //kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-      kpage = frame_get_page(PAL_USER | PAL_ZERO, sup_entry->uaddr);
+      kpage = frame_get_page(PAL_USER  | PAL_ZERO, sup_entry->uaddr);
       if(kpage == NULL){
+        ;
         success = false;
       }
-      else{
-        
+      else{       
         success = sup_load_file(kpage, sup_entry);
         
       }
       
       break;
     case MMAP_FILE:
+
      //printf("mmap at %x\n", sup_entry->uaddr);
       kpage = frame_get_page(PAL_USER | PAL_ZERO, sup_entry->uaddr);
       if(kpage == NULL){
+
         success = false;
       }
       else{
@@ -715,10 +708,37 @@ bool handle_page_faultt(struct sup_table_entry* sup_entry){
       }
       
       break;
+    case SWAP:
+      kpage = frame_get_page(PAL_USER | PAL_ZERO, sup_entry->uaddr);
+      //printf("sex... at %x\n", sup_entry->uaddr);
+      if(kpage==NULL){ 
+        success = false;
+      }       
+      else{
+        //printf("swap at.... %x\n", kpage);
+        swap_in(sup_entry->swap_index, kpage);
+        //printf("%x swap result : %d\n",sup_entry->uaddr, success); 
+        success = true;
+      }
+      
+      break;
     default:
       break;
   }
-  if(success)
-    success = install_page(sup_entry->uaddr, kpage, sup_entry->writable);
+
+
+  if(success){
+      //printf("%x, %x installed:\n", kpage, sup_entry->uaddr);
+      success = install_page(sup_entry->uaddr, kpage, sup_entry->writable);
+      if(!success)
+        PANIC("sexxxxx\n");
+
+  }
+  else
+  {
+      PANIC("load_fail\n");
+  }
+  
+
   return success;
 }

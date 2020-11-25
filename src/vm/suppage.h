@@ -4,6 +4,7 @@
 
 #define NORMAL 1
 #define MMAP_FILE 2
+#define SWAP 3
 
 struct lock sup_lock;
 struct sup_table_entry{
@@ -18,6 +19,8 @@ struct sup_table_entry{
     size_t zero_bytes;
     struct hash_elem sup_elem;
     struct list_elem m_sup_elem;
+
+    int swap_index;
 };
 void sup_table_init(struct hash* sup_table);
 int sup_val(struct hash_elem* hash, void* aux);

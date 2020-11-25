@@ -19,7 +19,7 @@ struct frame_entry{
 struct hash frame_table;
 struct hash_iterator* frame_table_clock;
 struct lock frame_lock;
-
+int clock_index;
 
 void frame_init(void);
 int frame_val(struct hash_elem* , void* );

@@ -163,17 +163,39 @@ page_fault (struct intr_frame *f)
           user ? "user" : "kernel");
   kill (f);
   */
-  
-   if(fault_addr <= PHYS_BASE && fault_addr >= 0x08048000){
+ 
+   if(fault_addr <= PHYS_BASE && fault_addr >= 0x08048000 && not_present){
+      /*
+       if(fault_addr >= 0xbf000000){
+         printf("come...stack...\n");
+         printf("%x, pointer is %x\n", fault_addr, f->esp);
 
+      }*/
+     // printf("fault at %x\n", fault_addr);
    struct sup_table_entry* sup_entry = sup_find_entry(&thread_current()->sup_table, fault_addr);
+   if(sup_entry == NULL){
+      exit(-1);
+      PANIC("cannot handle page fault");
+   }
+   
    void* esp = f->esp;
    
    bool success;
    success = handle_page_faultt(sup_entry);
+
+   /*
+  if(fault_addr >= 0xbfff0000){
+         printf("come...stack...\n");
+         printf("%x, pointer is %x\n", fault_addr, f->esp);
+         //hex_dump(fault_addr, fault_addr, 8, true);
+         //printf("%x is loaded:%d \n", sup_entry->uaddr, sup_entry->writable);
+      }
+   */
    
-   if(!success)
+   if(!success){
       exit(-1);
+   }
+      
    return;
    }
    
