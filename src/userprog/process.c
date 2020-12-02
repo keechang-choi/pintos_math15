@@ -17,6 +17,8 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/frame.h"
+
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -527,68 +529,71 @@ setup_stack (void **esp, char *file_string)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = frame_get_page (PAL_USER | PAL_ZERO, ((uint8_t *) PHYS_BASE) - PGSIZE);
+  //kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-        *esp = PHYS_BASE;
-      else
-        palloc_free_page (kpage);
+      if (success){
+	*esp = PHYS_BASE;
+    
+
+	char* token, *save_ptr;
+	int argc = 0;
+
+	char* arguments = (char*)calloc(strlen(file_string)+1, sizeof(char));
+	strlcpy(arguments, file_string, strlen(file_string)+1);
+	   for (token = strtok_r (arguments, " ", &save_ptr); token != NULL;
+		token = strtok_r (NULL, " ", &save_ptr)){
+	      argc++;
+	    }
+	  //char **argv = (char**)calloc(argc,sizeof(char*));
+	  char **argv = (char*)calloc(argc,sizeof(char*));
+	  int i=0;
+
+	  for (token = strtok_r (file_string, " ", &save_ptr); token != NULL;
+		token = strtok_r (NULL, " ", &save_ptr)){
+	      argv[i] = token;
+	      i++;
+	  }
+	 
+	  /* argv[][] */
+	  int total_len = 0;
+	  char* addr[argc];
+	  for(int i=argc-1;i>=0;i--){
+	    *esp = *esp - (strlen(argv[i])+1);
+	    memcpy(*esp, argv[i], strlen(argv[i])+1);
+	    total_len += strlen(argv[i])+1;
+	    addr[i] = *esp;
+	  }
+	  /*word align */
+	  if(total_len%4)
+	    *esp = *esp - (4-(total_len%4));
+	  /* argv[] */
+	  *esp = *esp - 4;
+	  *(int*)*esp = 0;
+
+	  for(int i = argc-1; i>=0; i--){
+	    *esp = *esp -4;
+	    memcpy(*esp, &addr[i], sizeof(char*));
+	  }
+	  /* argv */
+	  *esp = *esp -4;
+	  *(int*)*esp = (int)(*esp+4);
+	  /* argc */
+	  *esp = *esp -4;
+	  *(int*)*esp = argc;
+	  /* return */
+	  *esp = *esp -4;
+	  *(int*)*esp = 0;
+
+	  free(arguments);
+	  free(argv);
+      }
+      else{
+	     frame_free_page(kpage); 
+      }
     }
-
-  char* token, *save_ptr;
-  int argc = 0;
-
-  char* arguments = (char*)calloc(strlen(file_string)+1, sizeof(char));
-  strlcpy(arguments, file_string, strlen(file_string)+1);
-   for (token = strtok_r (arguments, " ", &save_ptr); token != NULL;
-        token = strtok_r (NULL, " ", &save_ptr)){
-      argc++;
-    }
-  //char **argv = (char**)calloc(argc,sizeof(char*));
-  char **argv = (char*)calloc(argc,sizeof(char*));
-  int i=0;
-
-  for (token = strtok_r (file_string, " ", &save_ptr); token != NULL;
-        token = strtok_r (NULL, " ", &save_ptr)){
-      argv[i] = token;
-      i++;
-  }
- 
-  /* argv[][] */
-  int total_len = 0;
-  char* addr[argc];
-  for(int i=argc-1;i>=0;i--){
-    *esp = *esp - (strlen(argv[i])+1);
-    memcpy(*esp, argv[i], strlen(argv[i])+1);
-    total_len += strlen(argv[i])+1;
-    addr[i] = *esp;
-  }
-  /*word align */
-  if(total_len%4)
-    *esp = *esp - (4-(total_len%4));
-  /* argv[] */
-  *esp = *esp - 4;
-  *(int*)*esp = 0;
-
-  for(int i = argc-1; i>=0; i--){
-    *esp = *esp -4;
-    memcpy(*esp, &addr[i], sizeof(char*));
-  }
-  /* argv */
-  *esp = *esp -4;
-  *(int*)*esp = (int)(*esp+4);
-  /* argc */
-  *esp = *esp -4;
-  *(int*)*esp = argc;
-  /* return */
-  *esp = *esp -4;
-  *(int*)*esp = 0;
-
-  free(arguments);
-  free(argv);
-
   return success;
 }
 

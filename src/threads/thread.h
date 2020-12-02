@@ -122,7 +122,7 @@ struct thread
    
 
   /*file control */
-   struct one_file files_list[150];
+   struct one_file files_list[128];
    struct file* executable;
    int file_number;
    int fd;
