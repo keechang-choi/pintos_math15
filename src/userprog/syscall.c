@@ -10,6 +10,8 @@
 #include "userprog/pagedir.h"
 #include "filesys/file.h"
 #include "lib/string.h"
+#include "vm/frame.h"
+#include "vm/suppage.h"
 
 
 static void syscall_handler (struct intr_frame *);
@@ -187,7 +189,7 @@ int wait(tid_t pid){
 }
 
 int write(int fd, const void* buffer, unsigned size){ 
-
+  printf("@@@@@syscall : write\n");
   if (fd == 1) {
     putbuf(buffer, size);
     return size;
@@ -358,3 +360,62 @@ struct file* file_search_and_delete_by_fd(int fd){
  return NULL;
 }
 
+bool valid_addr(void* addr){
+  if (addr >= PHYS_BASE){
+    return false;
+  }
+  
+  if (addr < 0x08048000){
+    return false;
+  }
+ // if (addr != pg_round_down(addr))
+ //   return false;
+  return true;
+  
+}
+/*
+int mmap(int fd, void* addr){
+  struct thread* cur = thread_current();
+  struct file* file = file_search_by_fd(fd);
+  if(file == NULL)
+    return -1;
+  if(!valid_addr(addr))
+    return -1;
+  struct file* new_file = file_reopen(file);
+  if(new_file == NULL)
+    return -1;
+  
+  struct mmap_entry* mmap_entry = malloc(sizeof(struct mmap_entry));
+  list_init(&mmap_entry->sup_entry_list);
+  mmap_entry->file = new_file;
+  mmap_entry->mapid = cur->mapid;
+  cur->mapid += 1;
+  bool success = mmap_create_sup_entries(mmap_entry, addr);
+  if(!success){
+    free(mmap_entry);
+    return -1;
+  }
+
+  list_push_back(&cur->mmap_list, &mmap_entry->mmap_elem);
+  return (cur->mapid -1);
+}
+
+void munmap(int mapid){
+  struct thread* cur = thread_current();
+  struct list_elem* e = list_begin(&cur->mmap_list);
+  struct mmap_entry* mmap_entry;
+  while(e!=list_end(&cur->mmap_list)){
+    mmap_entry = list_entry(e, struct mmap_entry, mmap_elem);
+    if (mmap_entry->mapid == mapid){
+      list_remove(&mmap_entry->mmap_elem);
+
+      lock_acquire(&filesys_lock);
+      mmap_delete_sup_list(mmap_entry, &cur->sup_table);
+      lock_release(&filesys_lock);
+    }
+    e = list_next(e);
+  }
+  
+}
+
+*/

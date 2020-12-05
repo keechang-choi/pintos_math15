@@ -477,6 +477,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->fd = 2;
   t->executable = NULL;
 
+  t->mapid = 1;
+  list_init(&t->mmap_list);
+
   intr_set_level (old_level);
 }
 

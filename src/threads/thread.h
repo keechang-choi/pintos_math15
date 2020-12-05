@@ -5,7 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/synch.h"
-
+#include "vm/suppage.h"
 #define FILESYS
 
 struct one_file{
@@ -130,6 +130,12 @@ struct thread
    /* flag */
    bool load_flag;
    bool exit_flag;
+
+   /* vm */
+   struct hash sup_table;
+   struct list mmap_list;
+   //struct lock f_lock;
+   int mapid;
 
   };
 

@@ -18,7 +18,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "vm/frame.h"
-
+#include "vm/suppage.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -96,8 +96,10 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-  
-  //printf("start_process : %s \n", file_name);
+ 
+  sup_table_init(&thread_current()->sup_table);
+
+ // printf("start_process : %s \n", file_name);
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -114,7 +116,7 @@ start_process (void *file_name_)
     exit(-1);
     //thread_exit ();
   }
-  //hex_dump(if_.esp, if_.esp, PHYS_BASE-if_.esp, true);
+  hex_dump(if_.esp, if_.esp, PHYS_BASE-if_.esp, true);
   
 
   /* Start the user process by simulating a return from an
@@ -175,6 +177,10 @@ process_exit (void)
 
   //printf("%s exiting..\n",thread_current()->name);
   
+  sup_table_destroy(&cur->sup_table);
+
+
+
  /* if(cur->executable != NULL){
     file_close(cur->executable);
   }*/
@@ -314,7 +320,7 @@ load (const char *file_name_origin, void (**eip) (void), void **esp)
   file = filesys_open (file_name);
   if (file == NULL) 
     {
-      printf ("load: %s: open failed\n", file_name);
+      //printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
 
@@ -483,7 +489,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
-
+  printf("@@@@@load_seg\n");
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -493,25 +499,21 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
-        return false;
+      struct sup_table_entry* sup_entry = malloc(sizeof(struct sup_table_entry));
+      sup_entry->type = NORMAL;
+      sup_entry->uaddr = pg_round_down(upage);
+      sup_entry->writable = writable;
+      sup_entry->is_loaded = false;
+      sup_entry->file = file;
+      sup_entry->offset = ofs;
+      sup_entry->read_bytes = page_read_bytes;
+      sup_entry->zero_bytes = page_zero_bytes;
 
-      /* Load this page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+      printf("@@@segloop\n");
+      sup_insert(&thread_current()->sup_table, sup_entry);
+      printf("%d %d %d %x %d\n", read_bytes, zero_bytes, ofs, sup_entry->uaddr, sup_entry->offset);
 
-      /* Add the page to the process's address space. */
-      if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }
+    
 
       /* Advance. */
       read_bytes -= page_read_bytes;
@@ -532,68 +534,77 @@ setup_stack (void **esp, char *file_string)
   kpage = frame_get_page (PAL_USER | PAL_ZERO, ((uint8_t *) PHYS_BASE) - PGSIZE);
   //kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success){
+  {
+    success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+    if (success){
 	*esp = PHYS_BASE;
-    
 
 	char* token, *save_ptr;
 	int argc = 0;
 
 	char* arguments = (char*)calloc(strlen(file_string)+1, sizeof(char));
 	strlcpy(arguments, file_string, strlen(file_string)+1);
-	   for (token = strtok_r (arguments, " ", &save_ptr); token != NULL;
-		token = strtok_r (NULL, " ", &save_ptr)){
-	      argc++;
-	    }
-	  //char **argv = (char**)calloc(argc,sizeof(char*));
-	  char **argv = (char*)calloc(argc,sizeof(char*));
-	  int i=0;
+	for (token = strtok_r (arguments, " ", &save_ptr); token != NULL;token = strtok_r (NULL, " ", &save_ptr)){
+	  argc++;
+	}
+	//char **argv = (char**)calloc(argc,sizeof(char*));
+	char **argv = (char*)calloc(argc,sizeof(char*));
+	int i=0;
 
-	  for (token = strtok_r (file_string, " ", &save_ptr); token != NULL;
-		token = strtok_r (NULL, " ", &save_ptr)){
-	      argv[i] = token;
-	      i++;
-	  }
-	 
-	  /* argv[][] */
-	  int total_len = 0;
-	  char* addr[argc];
-	  for(int i=argc-1;i>=0;i--){
-	    *esp = *esp - (strlen(argv[i])+1);
-	    memcpy(*esp, argv[i], strlen(argv[i])+1);
-	    total_len += strlen(argv[i])+1;
-	    addr[i] = *esp;
-	  }
-	  /*word align */
-	  if(total_len%4)
-	    *esp = *esp - (4-(total_len%4));
-	  /* argv[] */
-	  *esp = *esp - 4;
-	  *(int*)*esp = 0;
+  	for (token = strtok_r (file_string, " ", &save_ptr); token != NULL;token = strtok_r (NULL, " ", &save_ptr)){
+	  argv[i] = token;
+	  i++;
+	}
 
-	  for(int i = argc-1; i>=0; i--){
-	    *esp = *esp -4;
-	    memcpy(*esp, &addr[i], sizeof(char*));
-	  }
-	  /* argv */
+	/* argv[][] */
+	int total_len = 0;
+	char* addr[argc];
+	for(int i=argc-1;i>=0;i--){
+	*esp = *esp - (strlen(argv[i])+1);
+	memcpy(*esp, argv[i], strlen(argv[i])+1);
+	total_len += strlen(argv[i])+1;
+	addr[i] = *esp;
+	}
+	/*word align */
+	if(total_len%4)
+	  *esp = *esp - (4-(total_len%4));
+	/* argv[] */
+	*esp = *esp - 4;
+	*(int*)*esp = 0;
+		
+	for(int i = argc-1; i>=0; i--){
 	  *esp = *esp -4;
-	  *(int*)*esp = (int)(*esp+4);
-	  /* argc */
-	  *esp = *esp -4;
-	  *(int*)*esp = argc;
-	  /* return */
-	  *esp = *esp -4;
-	  *(int*)*esp = 0;
+	  memcpy(*esp, &addr[i], sizeof(char*));
+	}
+	/* argv */
+	*esp = *esp -4;
+	*(int*)*esp = (int)(*esp+4);
+	/* argc */
+	*esp = *esp -4;
+	*(int*)*esp = argc;
+	/* return */
+	*esp = *esp -4;
+	*(int*)*esp = 0;
 
-	  free(arguments);
-	  free(argv);
-      }
-      else{
-	     frame_free_page(kpage); 
-      }
+	free(arguments);
+	free(argv);
+
+        struct sup_table_entry* sup_entry = malloc(sizeof(struct sup_table_entry));
+  	sup_entry->type = NORMAL;
+      	sup_entry->file = NULL;
+      	sup_entry->is_loaded = true;
+      	sup_entry->uaddr = ((uint8_t *) PHYS_BASE) - PGSIZE;
+      	sup_entry->writable = true;
+      	lock_acquire(&frame_lock);
+      	frame_insert(sup_entry->uaddr,kpage);
+      	lock_release(&frame_lock);
+      	sup_insert(&thread_current()->sup_table, sup_entry);
+
     }
+    else{
+	frame_free_page(kpage); 
+    }
+  }
   return success;
 }
 
@@ -615,4 +626,76 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+bool handle_page_faultt(struct sup_table_entry* sup_entry){
+  printf("fault _addr %x\n ", sup_entry->uaddr);
+  int a =sup_entry->type;
+  bool success;
+  uint8_t* kpage;
+
+  switch(a){
+    case NORMAL:
+    printf("normal at %x\n", sup_entry->uaddr);
+      //kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+      kpage = frame_get_page(PAL_USER  | PAL_ZERO, sup_entry->uaddr);
+      if(kpage == NULL){
+        success = false;
+      }
+      else{
+        success = sup_load_file(kpage, sup_entry);
+
+      }
+
+      break;
+    case MMAP_FILE:
+
+     //printf("mmap at %x\n", sup_entry->uaddr);
+      kpage = frame_get_page(PAL_USER | PAL_ZERO, sup_entry->uaddr);
+      if(kpage == NULL){
+
+        success = false;
+      }
+      else{
+
+        success = sup_load_file(kpage, sup_entry);
+
+      }
+
+      break;
+			/*
+    case SWAP:
+      kpage = frame_get_page(PAL_USER | PAL_ZERO, sup_entry->uaddr);
+      //printf("swap... at %x\n", sup_entry->uaddr);
+      if(kpage==NULL){
+        success = false;
+      }
+      else{
+        //printf("swap at.... %x\n", kpage);
+        swap_in(sup_entry->swap_index, kpage);
+        //printf("%x swap result : %d\n",sup_entry->uaddr, success);
+        success = true;
+      }
+
+      break;
+			*/
+    default:
+      break;
+  }
+
+
+  if(success){
+      printf("%x, %x installed:\n", kpage, sup_entry->uaddr);
+      success = install_page(sup_entry->uaddr, kpage, sup_entry->writable);
+      if(!success)
+        PANIC("install_fail\n");
+
+  }
+  else
+  {
+      PANIC("load_fail\n");
+  }
+
+  printf("@@@@success : %d\n", success);
+  return success;
 }

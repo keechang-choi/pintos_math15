@@ -64,4 +64,15 @@ void frame_free_page(void* frame){
         PANIC("why..?\n");
   //  lock_release(&frame_lock);
 }
+void frame_delete_by_thread_exit(struct thread* cur){
+    struct hash_iterator i;
 
+    hash_first (&i, &frame_table);
+    while (hash_next (&i))
+    {
+        struct frame_entry *f = hash_entry (hash_cur (&i), struct frame_entry, frame_elem);
+        if (f->thread == cur){
+            frame_free_page(f);
+        }
+    }
+}
