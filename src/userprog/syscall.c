@@ -329,8 +329,8 @@ int file_available(void* addr){
     return 0;
   if (addr < 0x08048000)
     return 0;
-  if (pagedir_get_page(thread_current()->pagedir, addr) == NULL)
-    return 0;
+ // if (pagedir_get_page(thread_current()->pagedir, addr) == NULL)
+  //  return 0;
 
   return 1;
 }
