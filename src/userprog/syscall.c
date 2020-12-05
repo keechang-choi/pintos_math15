@@ -189,7 +189,7 @@ int wait(tid_t pid){
 }
 
 int write(int fd, const void* buffer, unsigned size){ 
-  printf("@@@@@syscall : write\n");
+  //printf("@@@@@syscall : write\n");
   if (fd == 1) {
     putbuf(buffer, size);
     return size;

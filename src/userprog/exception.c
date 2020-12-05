@@ -151,7 +151,7 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
   
-  printf("fault at %x\n", fault_addr);
+  //printf("fault at %x\n", fault_addr);
   if(fault_addr <= PHYS_BASE && fault_addr >= 0x08048000 && not_present){
       /*
        if(fault_addr >= 0xbf000000){
@@ -160,8 +160,8 @@ page_fault (struct intr_frame *f)
       }*/
     struct sup_table_entry* sup_entry = sup_find_entry(&thread_current()->sup_table, fault_addr);
     if(sup_entry == NULL){
-   //   exit(-1);
-      PANIC("cannot handle page fault");
+      exit(-1);
+      //PANIC("@@cannot handle page fault");
     }
    
     void* esp = f->esp;
@@ -183,7 +183,7 @@ page_fault (struct intr_frame *f)
       
     return;
   }
-printf("@@@@@@page fault bad addr%d, %d, %d\n", not_present, write, user);
+  //printf("@@@@@@page fault bad addr%d, %d, %d\n", not_present, write, user);
   exit(-1);
 
   /* To implement virtual memory, delete the rest of the function

@@ -116,7 +116,7 @@ start_process (void *file_name_)
     exit(-1);
     //thread_exit ();
   }
-  hex_dump(if_.esp, if_.esp, PHYS_BASE-if_.esp, true);
+  //hex_dump(if_.esp, if_.esp, PHYS_BASE-if_.esp, true);
   
 
   /* Start the user process by simulating a return from an
@@ -320,7 +320,7 @@ load (const char *file_name_origin, void (**eip) (void), void **esp)
   file = filesys_open (file_name);
   if (file == NULL) 
     {
-      //printf ("load: %s: open failed\n", file_name);
+      printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
 
@@ -333,7 +333,7 @@ load (const char *file_name_origin, void (**eip) (void), void **esp)
       || ehdr.e_phentsize != sizeof (struct Elf32_Phdr)
       || ehdr.e_phnum > 1024) 
     {
-      //printf ("load: %s: error loading executable\n", file_name);
+      printf ("load: %s: error loading executable\n", file_name);
       goto done; 
     }
 
@@ -489,7 +489,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
-  printf("@@@@@load_seg\n");
+  //printf("@@@@@load_seg\n");
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -509,15 +509,15 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       sup_entry->read_bytes = page_read_bytes;
       sup_entry->zero_bytes = page_zero_bytes;
 
-      printf("@@@segloop\n");
+      //printf("@@@segloop\n");
       sup_insert(&thread_current()->sup_table, sup_entry);
-      printf("%d %d %d %x %d\n", read_bytes, zero_bytes, ofs, sup_entry->uaddr, sup_entry->offset);
+     // printf("%d %d %d %x %d\n", read_bytes, zero_bytes, ofs, sup_entry->uaddr, sup_entry->offset);
 
-    
 
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
+      ofs += page_read_bytes;
       upage += PGSIZE;
     }
   return true;
@@ -629,14 +629,14 @@ install_page (void *upage, void *kpage, bool writable)
 }
 
 bool handle_page_faultt(struct sup_table_entry* sup_entry){
-  printf("fault _addr %x\n ", sup_entry->uaddr);
+  //printf("fault _addr %x\n ", sup_entry->uaddr);
   int a =sup_entry->type;
   bool success;
   uint8_t* kpage;
 
   switch(a){
     case NORMAL:
-    printf("normal at %x\n", sup_entry->uaddr);
+    //printf("normal at %x\n", sup_entry->uaddr);
       //kpage = palloc_get_page(PAL_USER | PAL_ZERO);
       kpage = frame_get_page(PAL_USER  | PAL_ZERO, sup_entry->uaddr);
       if(kpage == NULL){
@@ -685,7 +685,7 @@ bool handle_page_faultt(struct sup_table_entry* sup_entry){
 
 
   if(success){
-      printf("%x, %x installed:\n", kpage, sup_entry->uaddr);
+     // printf("%x, %x installed:\n", kpage, sup_entry->uaddr);
       success = install_page(sup_entry->uaddr, kpage, sup_entry->writable);
       if(!success)
         PANIC("install_fail\n");
@@ -696,6 +696,6 @@ bool handle_page_faultt(struct sup_table_entry* sup_entry){
       PANIC("load_fail\n");
   }
 
-  printf("@@@@success : %d\n", success);
+  //printf("@@@@success : %d\n", success);
   return success;
 }
