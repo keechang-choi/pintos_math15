@@ -160,7 +160,8 @@ page_fault (struct intr_frame *f)
       }*/
     struct sup_table_entry* sup_entry = sup_find_entry(&thread_current()->sup_table, fault_addr);
     if(sup_entry == NULL){
-      exit(-1);
+      //printf("@@@ no sup entry\n");
+	exit(-1);
       //PANIC("@@cannot handle page fault");
     }
    
@@ -176,7 +177,7 @@ page_fault (struct intr_frame *f)
          //printf("%x is loaded:%d \n", sup_entry->uaddr, sup_entry->writable);
       }
     
-   
+    //printf("page success : %d\n",success);
     if(!success){
       exit(-1);
     }

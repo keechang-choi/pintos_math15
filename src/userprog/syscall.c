@@ -93,6 +93,14 @@ syscall_handler (struct intr_frame *f UNUSED)
       close((int)args[0]);
       
       break;
+    case SYS_MMAP:
+      get_args(f->esp+4, &args[0], 2);
+      f->eax = mmap((int)args[0], (void *)args[1]);
+      break;
+    case SYS_MUNMAP:
+      get_args(f->esp+4, &args[0], 1);
+      munmap((int)args[0]);
+      break;
     default:
       exit(-1);
       break;              
@@ -147,6 +155,15 @@ void exit(int status){
 
   //sema_up(&thread_current()->exits_sema);
   
+  int mapid = thread_current()->mapid;
+  while(mapid>0){
+    munmap(mapid);
+    mapid -= 1;
+  }
+ 
+  sup_table_destroy(&thread_current()->sup_table);
+
+
   sema_up(&thread_current()->waiting_sema);
   sema_down(&thread_current()->exit_sema);
 
@@ -368,12 +385,12 @@ bool valid_addr(void* addr){
   if (addr < 0x08048000){
     return false;
   }
- // if (addr != pg_round_down(addr))
- //   return false;
+  if (addr != pg_round_down(addr))
+    return false;
   return true;
   
 }
-/*
+
 int mmap(int fd, void* addr){
   struct thread* cur = thread_current();
   struct file* file = file_search_by_fd(fd);
@@ -391,6 +408,7 @@ int mmap(int fd, void* addr){
   mmap_entry->mapid = cur->mapid;
   cur->mapid += 1;
   bool success = mmap_create_sup_entries(mmap_entry, addr);
+  //printf("@@@mmap success : %d\n", success);
   if(!success){
     free(mmap_entry);
     return -1;
@@ -401,6 +419,7 @@ int mmap(int fd, void* addr){
 }
 
 void munmap(int mapid){
+//  printf("@@@munmap\n");
   struct thread* cur = thread_current();
   struct list_elem* e = list_begin(&cur->mmap_list);
   struct mmap_entry* mmap_entry;
@@ -418,4 +437,4 @@ void munmap(int mapid){
   
 }
 
-*/
+

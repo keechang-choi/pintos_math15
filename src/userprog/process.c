@@ -177,10 +177,14 @@ process_exit (void)
 
   //printf("%s exiting..\n",thread_current()->name);
   
+/*
+  int mapid = cur->mapid;
+  while(mapid>0){
+    munmap(mapid);
+    mapid -= 1;
+  }
   sup_table_destroy(&cur->sup_table);
-
-
-
+*/
  /* if(cur->executable != NULL){
     file_close(cur->executable);
   }*/
