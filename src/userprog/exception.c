@@ -151,7 +151,12 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
   
-  //printf("fault at %x\n", fault_addr);
+  bool success = false;
+  void **esp = &f->esp;
+ 
+  //printf("@@@@@@fault at %x\n", fault_addr);
+  //printf("@@@@@@page fault%d, %d, %d\n", not_present, write, user);
+  //printf("@@@@@@fault esp %x\n\n", f->esp);
   if(fault_addr <= PHYS_BASE && fault_addr >= 0x08048000 && not_present){
       /*
        if(fault_addr >= 0xbf000000){
@@ -159,32 +164,37 @@ page_fault (struct intr_frame *f)
          printf("%x, pointer is %x\n", fault_addr, f->esp);
       }*/
     struct sup_table_entry* sup_entry = sup_find_entry(&thread_current()->sup_table, fault_addr);
-    if(sup_entry == NULL){
-      //printf("@@@ no sup entry\n");
+    if(sup_entry != NULL){
+      success = handle_page_faultt(sup_entry);
+      if(!success){
 	exit(-1);
+      }
+    }else{
+      //printf("@@@ no sup entry\n");
+      
+      //if(fault_addr >= 0xbf800000){
+      bool stack_suc;
+      stack_suc = stack_growth(esp, fault_addr);
+      if(!stack_suc){
+        exit(-1);
+      }
+      //}
+      //exit(-1);
       //PANIC("@@cannot handle page fault");
     }
    
-    void* esp = f->esp;
-    bool success;
-    success = handle_page_faultt(sup_entry);
 
-    
+    /*
     if(fault_addr >= 0xbfff0000){
          printf("come...stack...\n");
          printf("%x, pointer is %x\n", fault_addr, f->esp);
          //hex_dump(fault_addr, fault_addr, 8, true);
          //printf("%x is loaded:%d \n", sup_entry->uaddr, sup_entry->writable);
-      }
-    
-    //printf("page success : %d\n",success);
-    if(!success){
-      exit(-1);
-    }
+    }*/
       
     return;
   }
-  //printf("@@@@@@page fault bad addr%d, %d, %d\n", not_present, write, user);
+  //printf("@@@@@@page fault%d, %d, %d\n", not_present, write, user);
   exit(-1);
 
   /* To implement virtual memory, delete the rest of the function
@@ -200,4 +210,5 @@ page_fault (struct intr_frame *f)
 
 
 }
+
 

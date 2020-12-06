@@ -34,6 +34,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   int args[5];
   //printf("system call!\n");
   //printf ("system call %d!\n", *(int*)f->esp);
+  thread_current()->before_transition_esp = f->esp;
   switch(*(int*)f->esp){
     case SYS_HALT:
       halt();

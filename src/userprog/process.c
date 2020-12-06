@@ -603,6 +603,8 @@ setup_stack (void **esp, char *file_string)
       	frame_insert(sup_entry->uaddr,kpage);
       	lock_release(&frame_lock);
       	sup_insert(&thread_current()->sup_table, sup_entry);
+	ASSERT(pg_round_down(*esp) == 0xbffff000);
+	thread_current()->before_transition_esp = 0xbffff000;
 
     }
     else{
@@ -703,3 +705,48 @@ bool handle_page_faultt(struct sup_table_entry* sup_entry){
   //printf("@@@@success : %d\n", success);
   return success;
 }
+
+
+bool stack_growth(void **esp, void *fault_addr){
+  //printf("@@@@@@@stack_grawth_start@@@@\n"); 
+  uint8_t *kpage;
+  bool success = false;
+  uint8_t *new_esp, *old_esp;
+
+  if(0xbf800000 <= *esp && *esp <= 0xc0000000){
+    old_esp = *esp;
+  }else{
+    old_esp = thread_current()->before_transition_esp;
+  }
+
+  //printf("@@old_esp : %x\n",old_esp);
+  //old_esp = pg_round_down(old_esp);
+  //printf("@@o minus  %x, %x \n", old_esp-4, old_esp-32);
+  //8MB
+  if(fault_addr >= 0xbf800000 && (fault_addr >= old_esp-32)){
+    //printf("@@stack_grr\n");
+    new_esp = pg_round_down(fault_addr);
+    kpage = frame_get_page(PAL_USER | PAL_ZERO, new_esp);
+    if(kpage != NULL){
+      success = install_page(new_esp, kpage, true);
+      if(success){
+        struct sup_table_entry* sup_entry = malloc(sizeof(struct sup_table_entry));
+        sup_entry->type = NORMAL;
+        sup_entry->file = NULL;
+        sup_entry->is_loaded = true;
+        sup_entry->uaddr = new_esp;
+        sup_entry->writable = true;
+        lock_acquire(&frame_lock);
+        frame_insert(sup_entry->uaddr,kpage);
+        lock_release(&frame_lock);
+        sup_insert(&thread_current()->sup_table, sup_entry);
+        //*esp = fault_addr;
+      }
+    }
+  }else{
+    success = false;
+  }
+  return success;
+}
+
+
