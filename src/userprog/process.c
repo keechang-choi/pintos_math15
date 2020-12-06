@@ -669,7 +669,7 @@ bool handle_page_faultt(struct sup_table_entry* sup_entry){
       }
 
       break;
-			/*
+			
     case SWAP:
       kpage = frame_get_page(PAL_USER | PAL_ZERO, sup_entry->uaddr);
       //printf("swap... at %x\n", sup_entry->uaddr);
@@ -684,7 +684,7 @@ bool handle_page_faultt(struct sup_table_entry* sup_entry){
       }
 
       break;
-			*/
+			
     default:
       break;
   }

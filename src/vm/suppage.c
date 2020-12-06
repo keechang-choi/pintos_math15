@@ -64,7 +64,7 @@ void sup_destroy_func(struct hash_elem* h, void* aux){
     struct thread* cur = thread_current();
     
     switch(sup_entry->type){
- /*   case NORMAL:
+    case NORMAL:
 	//printf("%x go to swap_table\n", sup_entry->uaddr);
 	if(pagedir_is_dirty(cur->pagedir, pg_round_down(sup_entry->uaddr))){
 	    //printf("now..%x %x\n", frame_entry->kaddr, frame_entry->uaddr);
@@ -73,18 +73,17 @@ void sup_destroy_func(struct hash_elem* h, void* aux){
 	}
 		   
 	break;
-	*/
     case MMAP_FILE:
 	if(pagedir_is_dirty(cur->pagedir, pg_round_down(sup_entry->uaddr)))
 	    file_write_at(sup_entry->file, sup_entry->uaddr, sup_entry->read_bytes, sup_entry->offset); 
        
 	break;
-	/*
+	
     case SWAP:             
 	//printf("swap + %x\n", frame_entry->uaddr);
 	sup_entry->swap_index = swap_out(kaddr);
 	break;
-	*/
+	
     default:
 	break;
     }
