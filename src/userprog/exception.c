@@ -151,56 +151,66 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
+ 
+  bool success = false;
+  void **esp = &f->esp;
+ 
+  //printf("@@@@@@fault at %x\n", fault_addr);
+  //printf("@@@@@@page fault%d, %d, %d\n", not_present, write, user);
+  //printf("@@@@@@fault esp %x\n\n", f->esp);
+  if(not_present){
+ // if(fault_addr <= PHYS_BASE && fault_addr >= 0x08048000 && not_present){
+      /*
+       if(fault_addr >= 0xbf000000){
+         printf("come...stack...\n");
+         printf("%x, pointer is %x\n", fault_addr, f->esp);
+      }*/
+    struct sup_table_entry* sup_entry = sup_find_entry(&thread_current()->sup_table, fault_addr);
+    if(sup_entry != NULL){
+      success = handle_page_faultt(sup_entry);
+      if(!success){
+	printf("@@@handling err\n");
+	exit(-1);
+      }
+    }else{
+      //printf("@@@ no sup entry\n");
+
+      bool stack_suc=false;
+      stack_suc = stack_growth(esp, fault_addr);
+      if(!stack_suc){
+        //printf("@@@@stack_Fail\n");
+	exit(-1);
+      }
+      //exit(-1);
+      //PANIC("@@cannot handle page fault");
+    }
+
+
+    /*
+    if(fault_addr >= 0xbfff0000){
+         printf("come...stack...\n");
+         printf("%x, pointer is %x\n", fault_addr, f->esp);
+         //hex_dump(fault_addr, fault_addr, 8, true);
+         //printf("%x is loaded:%d \n", sup_entry->uaddr, sup_entry->writable);
+    }*/
+
+    return;
+  }
+  //printf("@@@@@@page fault bad add %x, %d, %d, %d\n",fault_addr, not_present, write, user);
+  exit(-1);
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-   /*   
-  printf ("Page fault at %p: %s error %s page in %s context.\n",
+ /* printf ("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
           user ? "user" : "kernel");
   kill (f);
   */
- 
-   if(fault_addr <= PHYS_BASE && fault_addr >= 0x08048000 && not_present){
-      /*
-       if(fault_addr >= 0xbf000000){
-         printf("come...stack...\n");
-         printf("%x, pointer is %x\n", fault_addr, f->esp);
 
-      }*/
-     // printf("fault at %x\n", fault_addr);
-   struct sup_table_entry* sup_entry = sup_find_entry(&thread_current()->sup_table, fault_addr);
-   if(sup_entry == NULL){
-      exit(-1);
-      PANIC("cannot handle page fault");
-   }
-   
-   void* esp = f->esp;
-   
-   bool success;
-   success = handle_page_faultt(sup_entry);
 
-   /*
-  if(fault_addr >= 0xbfff0000){
-         printf("come...stack...\n");
-         printf("%x, pointer is %x\n", fault_addr, f->esp);
-         //hex_dump(fault_addr, fault_addr, 8, true);
-         //printf("%x is loaded:%d \n", sup_entry->uaddr, sup_entry->writable);
-      }
-   */
-   
-   if(!success){
-      exit(-1);
-   }
-      
-   return;
-   }
-   
-   exit(-1);
-   //kill(f);
 }
 
 

@@ -13,4 +13,5 @@ void process_activate (void);
 static bool
 install_page (void *upage, void *kpage, bool writable);
 bool handle_page_faultt(struct sup_table_entry* sup_entry);
+bool stack_growth(void **esp, void *fault_addr);
 #endif /* userprog/process.h */
