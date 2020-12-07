@@ -4,6 +4,7 @@
 #include "userprog/pagedir.h"
 #include "vm/swap.h"
 #include "vm/suppage.h"
+#include "devices/timer.h"
 #include <stdlib.h>
 void frame_init(void){
     lock_init(&frame_lock);
@@ -43,7 +44,7 @@ bool frame_insert(void* uaddr, void* kaddr){
 void* frame_get_page(enum palloc_flags flags, void* uaddr){
     if(!(flags & PAL_USER))
         return NULL;
-    //lock_acquire(&frame_lock);
+    lock_acquire(&frame_lock);
     uint8_t* frame = palloc_get_page(flags);
     /* free-page left*/
     if(frame!= NULL){
@@ -140,31 +141,38 @@ void* frame_get_page(enum palloc_flags flags, void* uaddr){
         
        
     }
-    //lock_release(&frame_lock);
+    lock_release(&frame_lock);
     return frame;
 }
 
 void frame_free_page(void* frame){
-  //  lock_acquire(&frame_lock);
-    struct frame_entry* real_frame;
+    
+    //lock_acquire(&frame_lock);
+    struct frame_entry* real_frame = malloc(sizeof(struct frame_entry));
+   
     real_frame->kaddr = frame;
-    //printf("sex\n");
+    
+   // printf("free at %x\n", frame);
     
  
     struct hash_elem* e = hash_delete(&frame_table, &real_frame->frame_elem);
     
     palloc_free_page(frame);
     
-    if(e!= NULL)
+    if(e!= NULL){
         free(hash_entry(e, struct frame_entry, frame_elem));
-    else
-        PANIC("why..?\n");
-  //  lock_release(&frame_lock);
+        free(real_frame);
+    }       
+    else{
+        free(real_frame);
+        //PANIC("why..?\n");
+    }
+        
+    //lock_release(&frame_lock);
 }
 
 void frame_free_page_2(struct frame_entry* frame_entry){
 
-    
     //lock_acquire(&frame_lock);
     
     struct hash_elem* e = hash_delete(&frame_table, &frame_entry->frame_elem);

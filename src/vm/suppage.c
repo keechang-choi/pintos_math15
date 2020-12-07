@@ -8,6 +8,8 @@
 #include "vm/frame.h"
 #include "devices/timer.h"
 #include <stdlib.h>
+#include "threads/malloc.h"
+
 
 void sup_table_init(struct hash* sup_table){
     hash_init(sup_table, sup_val, sup_less, NULL);
@@ -52,65 +54,69 @@ void sup_destroy_func(struct hash_elem* h, void* aux){
     struct sup_table_entry* sup_entry = hash_entry(h, struct sup_table_entry, sup_elem);
     if(sup_entry == NULL)
         return;
-    
-    pagedir_clear_page(cur_thread->pagedir, sup_entry->uaddr);
-    void* kaddr = pagedir_get_page(cur_thread->pagedir, sup_entry->uaddr);
-    if(!kaddr){
-        free(sup_entry);
-        return;
-    }
-        
-    
+    // printf("destroy at %x %d\n", sup_entry->uaddr, cur_thread->tid);
     struct thread* cur = thread_current();
-    
+    void* kaddr;
     switch(sup_entry->type){
                     case NORMAL:
-                        //printf("%x go to swap_table\n", sup_entry->uaddr);
-                        if(pagedir_is_dirty(cur->pagedir, pg_round_down(sup_entry->uaddr))){
-                            //printf("now..%x %x\n", frame_entry->kaddr, frame_entry->uaddr);
-                            sup_entry->swap_index = swap_out(kaddr);
-                            sup_entry->type = SWAP;
+                        
+                        kaddr = pagedir_get_page(cur_thread->pagedir, sup_entry->uaddr);
+                        pagedir_clear_page(cur_thread->pagedir, sup_entry->uaddr);
+                        if(kaddr == NULL){
+                            //Case : page but not loaded.
+                            //printf("sexsex at %x %d\n", sup_entry->uaddr, cur_thread->tid);
                         }
-                       
-                                   
+                        else                           
+                            frame_free_page(kaddr);        
                         break;
                     case MMAP_FILE:
+                        
                         if(pagedir_is_dirty(cur->pagedir, pg_round_down(sup_entry->uaddr)))
                             file_write_at(sup_entry->file, sup_entry->uaddr, sup_entry->read_bytes, sup_entry->offset); 
                        
                         break;
-                    case SWAP:             
-                        //printf("swap + %x\n", frame_entry->uaddr);
-                        sup_entry->swap_index = swap_out(kaddr);
+                    case SWAP:     
+                        if (sup_entry->swap_index == -1){
+                            kaddr = pagedir_get_page(cur_thread->pagedir, sup_entry->uaddr);
+                            pagedir_clear_page(cur_thread->pagedir, sup_entry->uaddr);
+                            if(kaddr == NULL)
+                                PANIC("HELP_ME_SWAP\n");   
+                        
+                            frame_free_page(kaddr); 
+                        }
+                        else        
+                            swap_bit(sup_entry->swap_index);
+                        //sup_entry->swap_index = swap_out(kaddr);
                         break;
                     default:
                         break;
     }
     
-    if(kaddr == NULL)
-        ASSERT("HELP_ME\n");
-    frame_free_page(kaddr);
-
     free(sup_entry);
     
 }
 
 void sup_table_destroy(struct hash* sup_table){
-   // lock_acquire(&frame_lock);
+    //printf("size compare : %d vs %d\n", hash_size(&frame_table), hash_size(&thread_current()->sup_table));
     hash_destroy(sup_table, sup_destroy_func);
-   // lock_release(&frame_lock);
+   // printf("size compare : %d vs %d\n", hash_size(&frame_table), hash_size(&thread_current()->sup_table));
 }
 
 
 bool sup_load_file(void* kaddr, struct sup_table_entry* sup_entry){
+     
     if(sup_entry->file){
         if(sup_entry->read_bytes >0){
-    
+            
+            if(thread_current()->tid == 5){
+               // printf("%d\n", file_tell(sup_entry->file) );
+                //printf("%x %d\n", kaddr, sup_entry->read_bytes);
+            }
+                
             size_t actual_read_bytes = file_read_at(sup_entry->file, kaddr, sup_entry->read_bytes,  sup_entry->offset);
-        
             if(actual_read_bytes != sup_entry->read_bytes){
                 pagedir_clear_page(thread_current()->pagedir, sup_entry->uaddr);
-  
+                
                 return false;
             }    
             else

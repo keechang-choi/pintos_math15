@@ -1,6 +1,7 @@
 #ifndef SUP_PAGE
 #define SUP_PAGE
 #include <hash.h>
+#include <stdlib.h>
 
 #define NORMAL 1
 #define MMAP_FILE 2

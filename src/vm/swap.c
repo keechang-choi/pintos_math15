@@ -41,6 +41,7 @@ size_t swap_out(void* kaddr){
     size_t index = bitmap_scan_and_flip(swap_bitmap, 0, 1, true);
     
     if(index == BITMAP_ERROR){
+       
         return -1;
     }
     
@@ -56,3 +57,9 @@ size_t swap_out(void* kaddr){
     return index;
 }
 
+void swap_bit(size_t index){
+    ASSERT(!bitmap_test(swap_bitmap, index));
+    lock_acquire(&swap_lock);
+    bitmap_flip(swap_bitmap, index);
+    lock_release(&swap_lock);
+}

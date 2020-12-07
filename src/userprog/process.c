@@ -199,14 +199,16 @@ process_exit (void)
   //frame_delete_by_thread_exit(cur);
   
   int mapid = cur->mapid;
-  while(mapid>0){
-    munmap(mapid);
+  while(mapid>1){
+    
+    munmap(mapid-1);
     mapid -= 1;
   }
- 
+  
   sup_table_destroy(&cur->sup_table);
   /*
   int index = thread_current()->file_number;
+  printf("%d index\n", index);
   if(index>0){
     for(int i=0; i<index; i++){
       file_close(thread_current()->files_list[i].file);
@@ -214,7 +216,9 @@ process_exit (void)
   }
   */
 
-  if(cur->executable != NULL){    
+  
+  if(cur->executable != NULL){  
+   // printf("file close.. %x\n", cur->executable);
     file_close(cur->executable);
   }
   
@@ -329,7 +333,8 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    Returns true if successful, false otherwise. */
 bool
 load (const char *file_name_origin, void (**eip) (void), void **esp) 
-{
+{ 
+  
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
@@ -362,7 +367,6 @@ load (const char *file_name_origin, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
-  
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -552,7 +556,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       sup_entry->offset = ofs;
       sup_entry->read_bytes = page_read_bytes;
       sup_entry->zero_bytes = page_zero_bytes;
-
+      //printf("%x created at %d\n", sup_entry->uaddr, thread_current()->tid);
       sup_insert(&thread_current()->sup_table, sup_entry);
       //printf("%d %d %d %x %d\n", read_bytes, zero_bytes, ofs, sup_entry->uaddr, sup_entry->offset);
       /* Advance. */
@@ -639,6 +643,7 @@ setup_stack (void **esp, char* file_string)
       lock_acquire(&frame_lock);
       frame_insert(sup_entry->uaddr,kpage);
       lock_release(&frame_lock);
+ 
       sup_insert(&thread_current()->sup_table, sup_entry);
       }
       else{
@@ -673,21 +678,24 @@ install_page (void *upage, void *kpage, bool writable)
 }
 
 bool handle_page_faultt(struct sup_table_entry* sup_entry){
-  //printf("fault _addr %x\n ", sup_entry->uaddr);
+  //printf("fault _addr %x with %d\n ", sup_entry->uaddr, thread_current()->tid);
   int a =sup_entry->type;
   bool success;
   uint8_t* kpage;
-
+  
   switch(a){
     case NORMAL:
+      
     //printf("normal at %x\n", sup_entry->uaddr);
       //kpage = palloc_get_page(PAL_USER | PAL_ZERO);
       kpage = frame_get_page(PAL_USER  | PAL_ZERO, sup_entry->uaddr);
+
       if(kpage == NULL){
-        ;
+         
         success = false;
       }
-      else{       
+      else{    
+          
         success = sup_load_file(kpage, sup_entry);
         
       }
@@ -712,11 +720,13 @@ bool handle_page_faultt(struct sup_table_entry* sup_entry){
       kpage = frame_get_page(PAL_USER | PAL_ZERO, sup_entry->uaddr);
       //printf("sex... at %x\n", sup_entry->uaddr);
       if(kpage==NULL){ 
+        ASSERT("alloc error");
         success = false;
       }       
       else{
         //printf("swap at.... %x\n", kpage);
         swap_in(sup_entry->swap_index, kpage);
+        sup_entry->swap_index = -1;
         //printf("%x swap result : %d\n",sup_entry->uaddr, success); 
         success = true;
       }
