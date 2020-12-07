@@ -52,45 +52,54 @@ void sup_destroy_func(struct hash_elem* h, void* aux){
     struct sup_table_entry* sup_entry = hash_entry(h, struct sup_table_entry, sup_elem);
     if(sup_entry == NULL)
         return;
-    
-    pagedir_clear_page(cur_thread->pagedir, sup_entry->uaddr);
-    void* kaddr = pagedir_get_page(cur_thread->pagedir, sup_entry->uaddr);
+        pagedir_clear_page(cur_thread->pagedir, sup_entry->uaddr);
+    /*void* kaddr = pagedir_get_page(cur_thread->pagedir, sup_entry->uaddr);
     if(!kaddr){
+	frame_free_page(kaddr);
         free(sup_entry);
         return;
     }
-        
-    
-    struct thread* cur = thread_current();
-    
+    return;
+*/
+    void* kaddr;
     switch(sup_entry->type){
     case NORMAL:
-	//printf("%x go to swap_table\n", sup_entry->uaddr);
-	if(pagedir_is_dirty(cur->pagedir, pg_round_down(sup_entry->uaddr))){
-	    //printf("now..%x %x\n", frame_entry->kaddr, frame_entry->uaddr);
-	    sup_entry->swap_index = swap_out(kaddr);
-	    sup_entry->type = SWAP;
+        kaddr = pagedir_get_page(cur_thread->pagedir, sup_entry->uaddr);
+	pagedir_clear_page(cur_thread->pagedir, sup_entry->uaddr);
+	if(kaddr == NULL){
+	;  
+	//PANIC ("@@@@@no page for uaddr\n");
+	}else{
+	  
+	  frame_free_page(kaddr);
 	}
-		   
+
 	break;
     case MMAP_FILE:
-	if(pagedir_is_dirty(cur->pagedir, pg_round_down(sup_entry->uaddr)))
+	if(pagedir_is_dirty(cur_thread->pagedir, pg_round_down(sup_entry->uaddr)))
 	    file_write_at(sup_entry->file, sup_entry->uaddr, sup_entry->read_bytes, sup_entry->offset); 
        
 	break;
 	
     case SWAP:             
-	//printf("swap + %x\n", frame_entry->uaddr);
-	sup_entry->swap_index = swap_out(kaddr);
+	//printf("@@@@@supswap\n");
+	if (sup_entry->swap_index == -1){
+          kaddr = pagedir_get_page(cur_thread->pagedir, sup_entry->uaddr);
+          pagedir_clear_page(cur_thread->pagedir, sup_entry->uaddr);
+          if(kaddr == NULL){
+            //PANIC("HELP_ME_SWAP\n");
+	  }else{
+            frame_free_page(kaddr);
+	  }
+        }
+        else
+	  swap_bit(sup_entry->swap_index);
 	break;
 	
     default:
 	break;
     }
     
-    if(kaddr == NULL)
-        ASSERT("HELP_ME\n");
-    frame_free_page(kaddr);
 
     free(sup_entry);
     

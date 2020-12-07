@@ -113,6 +113,7 @@ start_process (void *file_name_)
   sema_up(&thread_current()->load_sema);
 
   if (!success){
+    //printf("@@@load_fail\n");
     exit(-1);
     //thread_exit ();
   }
@@ -177,17 +178,20 @@ process_exit (void)
 
   //printf("%s exiting..\n",thread_current()->name);
   
-/*
+
   int mapid = cur->mapid;
   while(mapid>0){
     munmap(mapid);
     mapid -= 1;
   }
   sup_table_destroy(&cur->sup_table);
-*/
- /* if(cur->executable != NULL){
+
+  if(cur->executable != NULL){
     file_close(cur->executable);
-  }*/
+  }
+
+    sema_up(&thread_current()->waiting_sema);
+  sema_down(&thread_current()->exit_sema);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -594,11 +598,12 @@ setup_stack (void **esp, char *file_string)
 	free(argv);
 
         struct sup_table_entry* sup_entry = malloc(sizeof(struct sup_table_entry));
-  	sup_entry->type = NORMAL;
+  	sup_entry->type = SWAP;
       	sup_entry->file = NULL;
       	sup_entry->is_loaded = true;
       	sup_entry->uaddr = ((uint8_t *) PHYS_BASE) - PGSIZE;
       	sup_entry->writable = true;
+	sup_entry->swap_index = -1;
       	lock_acquire(&frame_lock);
       	frame_insert(sup_entry->uaddr,kpage);
       	lock_release(&frame_lock);
@@ -671,15 +676,22 @@ bool handle_page_faultt(struct sup_table_entry* sup_entry){
       break;
 			
     case SWAP:
+      //printf("@@@@ page fault with swap sup\n");
       kpage = frame_get_page(PAL_USER | PAL_ZERO, sup_entry->uaddr);
       //printf("swap... at %x\n", sup_entry->uaddr);
       if(kpage==NULL){
-        success = false;
+        printf("@@@frame_get_err\n");
+	success = false;
       }
       else{
-        //printf("swap at.... %x\n", kpage);
-        swap_in(sup_entry->swap_index, kpage);
-        //printf("%x swap result : %d\n",sup_entry->uaddr, success);
+       // printf("swap at.... %x\n", kpage);
+	swap_in(sup_entry->swap_index, kpage);
+	  /*if(sup_entry->swap_index == 130){
+	      printf("@@@@@swap_in kpage : %x , sup : %x , %x @@@@\n", kpage, sup_entry,*kpage);
+	}*/
+	//sup_entry->type = NORMAL;
+        sup_entry->swap_index = -1;
+	//printf("%x swap result : %d\n",sup_entry->uaddr, success);
         success = true;
       }
 
@@ -691,18 +703,17 @@ bool handle_page_faultt(struct sup_table_entry* sup_entry){
 
 
   if(success){
-     // printf("%x, %x installed:\n", kpage, sup_entry->uaddr);
+    //  printf("%x, %x installed:\n", kpage, sup_entry->uaddr);
       success = install_page(sup_entry->uaddr, kpage, sup_entry->writable);
       if(!success)
-        PANIC("install_fail\n");
+        PANIC("@@@install_fail\n");
 
   }
   else
   {
-      PANIC("load_fail\n");
+      PANIC("@@@load_fail\n");
   }
 
-  //printf("@@@@success : %d\n", success);
   return success;
 }
 
@@ -724,18 +735,19 @@ bool stack_growth(void **esp, void *fault_addr){
   //printf("@@o minus  %x, %x \n", old_esp-4, old_esp-32);
   //8MB
   if(fault_addr >= 0xbf800000 && (fault_addr >= old_esp-32)){
-    //printf("@@stack_grr\n");
+   // printf("@@stack_grr, fault %x,  esp %x\n", fault_addr, old_esp);
     new_esp = pg_round_down(fault_addr);
     kpage = frame_get_page(PAL_USER | PAL_ZERO, new_esp);
     if(kpage != NULL){
       success = install_page(new_esp, kpage, true);
       if(success){
         struct sup_table_entry* sup_entry = malloc(sizeof(struct sup_table_entry));
-        sup_entry->type = NORMAL;
+        sup_entry->type = SWAP;
         sup_entry->file = NULL;
         sup_entry->is_loaded = true;
         sup_entry->uaddr = new_esp;
         sup_entry->writable = true;
+	sup_entry->swap_index = -1;
         lock_acquire(&frame_lock);
         frame_insert(sup_entry->uaddr,kpage);
         lock_release(&frame_lock);

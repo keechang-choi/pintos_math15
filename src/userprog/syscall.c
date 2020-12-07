@@ -126,10 +126,12 @@ void exit(int status){
    thread_current()->exit_status = status; 
    thread_current()->exit_flag = true;
   
+  /* 
   //already have filesys lock since exec 
   if(filesys_lock.holder != thread_current())
     lock_acquire(&filesys_lock); 
-  
+  */
+
   int index = thread_current()->file_number;
   if(index>0){
     for(int i=0; i<index; i++){
@@ -137,13 +139,13 @@ void exit(int status){
       close_count++;
     }
   }
-  lock_release(&filesys_lock);
+  //lock_release(&filesys_lock);
 
-
+/*
   if(thread_current()->executable != NULL){
   	file_close(thread_current()->executable);
   }
-  
+  */
   thread_current()->file_number = 0;
 
   struct list_elem* e;
@@ -155,7 +157,7 @@ void exit(int status){
   }
 
   //sema_up(&thread_current()->exits_sema);
-  
+  /*
   int mapid = thread_current()->mapid;
   while(mapid>0){
     munmap(mapid);
@@ -167,7 +169,7 @@ void exit(int status){
 
   sema_up(&thread_current()->waiting_sema);
   sema_down(&thread_current()->exit_sema);
-
+  */
   thread_exit();
 }
 

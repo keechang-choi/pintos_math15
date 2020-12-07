@@ -154,10 +154,16 @@ page_fault (struct intr_frame *f)
   bool success = false;
   void **esp = &f->esp;
  
+
+
+
+
+
   //printf("@@@@@@fault at %x\n", fault_addr);
   //printf("@@@@@@page fault%d, %d, %d\n", not_present, write, user);
   //printf("@@@@@@fault esp %x\n\n", f->esp);
-  if(fault_addr <= PHYS_BASE && fault_addr >= 0x08048000 && not_present){
+  if(not_present){
+ // if(fault_addr <= PHYS_BASE && fault_addr >= 0x08048000 && not_present){
       /*
        if(fault_addr >= 0xbf000000){
          printf("come...stack...\n");
@@ -167,18 +173,18 @@ page_fault (struct intr_frame *f)
     if(sup_entry != NULL){
       success = handle_page_faultt(sup_entry);
       if(!success){
+	printf("@@@handling err\n");
 	exit(-1);
       }
     }else{
       //printf("@@@ no sup entry\n");
       
-      //if(fault_addr >= 0xbf800000){
-      bool stack_suc;
+      bool stack_suc=false;
       stack_suc = stack_growth(esp, fault_addr);
       if(!stack_suc){
-        exit(-1);
+        //printf("@@@@stack_Fail\n");
+	exit(-1);
       }
-      //}
       //exit(-1);
       //PANIC("@@cannot handle page fault");
     }
@@ -194,7 +200,7 @@ page_fault (struct intr_frame *f)
       
     return;
   }
-  //printf("@@@@@@page fault%d, %d, %d\n", not_present, write, user);
+  //printf("@@@@@@page fault bad add %x, %d, %d, %d\n",fault_addr, not_present, write, user);
   exit(-1);
 
   /* To implement virtual memory, delete the rest of the function

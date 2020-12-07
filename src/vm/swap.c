@@ -22,7 +22,7 @@ void swap_init(){
 
 void swap_in(size_t used_index, void* kaddr){
     //printf("used_index is %d\n", used_index);
-   // bitmap_dump(swap_bitmap);
+    //bitmap_dump(swap_bitmap);
     ASSERT(!bitmap_test(swap_bitmap, used_index));
     lock_acquire(&swap_lock);
     int sector = 0;
@@ -30,7 +30,6 @@ void swap_in(size_t used_index, void* kaddr){
         block_read(swap_table, used_index* sectors_in_page + sector, kaddr + (sector * BLOCK_SECTOR_SIZE));
         sector+=1;
     }
-
     bitmap_flip(swap_bitmap, used_index);
     lock_release(&swap_lock);
     return;
@@ -40,8 +39,14 @@ size_t swap_out(void* kaddr){
     //printf("@@swap_out\n");
     lock_acquire(&swap_lock);
     size_t index = bitmap_scan_and_flip(swap_bitmap, 0, 1, true);
+    ASSERT(!bitmap_test(swap_bitmap, index));
+   /* if(index == 130){
+      printf("@@@@@@@@@@@@@@@@@@@@@@@ %x\n", kaddr);
+    }*/
     if(index == BITMAP_ERROR){
-        return -1;
+      lock_release(&swap_lock);
+      printf("@@@swap_out_err\n");
+      return -1;
     }
     
     int sector = 0;
@@ -53,5 +58,13 @@ size_t swap_out(void* kaddr){
 
     lock_release(&swap_lock);
     return index;
+}
+
+void swap_bit(size_t index){
+    //printf("@@@@@@@@@@@@ %d @@@@@@@@\n", index);
+    ASSERT(!bitmap_test(swap_bitmap, index));
+    lock_acquire(&swap_lock);
+    bitmap_flip(swap_bitmap, index);
+    lock_release(&swap_lock);
 }
 

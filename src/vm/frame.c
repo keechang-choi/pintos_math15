@@ -39,6 +39,7 @@ bool frame_insert(void* uaddr, void* kaddr){
 void* frame_get_page(enum palloc_flags flags, void* uaddr){
     if(!(flags & PAL_USER))
         return NULL;
+    
     //lock_acquire(&frame_lock);
     uint8_t* frame = palloc_get_page(flags);
 
@@ -69,17 +70,17 @@ void* frame_get_page(enum palloc_flags flags, void* uaddr){
                 clock_index = 0;
             }
             clock_index ++;
-            struct frame_entry* frame_entry = hash_entry(hash_cur(frame_table_clock), struct frame_entry, frame_elem);
-            if(frame_entry == NULL)
+            struct frame_entry* frame_entry1 = hash_entry(hash_cur(frame_table_clock), struct frame_entry, frame_elem);
+            if(frame_entry1 == NULL)
 		PANIC ("EVICT ERR");
-            //printf("%x %x %d\n", frame_entry->kaddr, frame_entry->uaddr, frame_entry->thread->tid);
-            if(!pagedir_is_accessed(thread_current()->pagedir, frame_entry->uaddr) ){
+            //printf("%x %x %d\n", frame_entry1->kaddr, frame_entry1->uaddr, frame_entry1->thread->tid);
+            if(!pagedir_is_accessed(thread_current()->pagedir, frame_entry1->uaddr) ){
                 /* swap! */
-                void* kaddr = frame_entry->kaddr;
+                void* kaddr = frame_entry1->kaddr;
                 
                 /* reflect changes... */
-                struct thread* target_thread = frame_entry->thread;
-                void* target_uaddr = frame_entry->uaddr;
+                struct thread* target_thread = frame_entry1->thread;
+                void* target_uaddr = frame_entry1->uaddr;
                 
                 struct sup_table_entry* sup_entry = sup_find_entry(&target_thread->sup_table, target_uaddr);
                 
@@ -88,38 +89,45 @@ void* frame_get_page(enum palloc_flags flags, void* uaddr){
                     case NORMAL:
                         //printf("%x go to swap_table\n", sup_entry->uaddr);
                         if(pagedir_is_dirty(target_thread->pagedir, pg_round_down(target_uaddr))){
-                            //printf("now..%x %x\n", frame_entry->kaddr, frame_entry->uaddr);
-                            sup_entry->swap_index = swap_out(frame_entry->kaddr);
+                            //printf("now..%x %x\n", frame_entry1->kaddr, frame_entry1->uaddr);
+			    pagedir_set_dirty(target_thread->pagedir, pg_round_down(target_uaddr), false);
+			    sup_entry->swap_index = swap_out(frame_entry1->kaddr);
                             sup_entry->type = SWAP;
                         }
                        
                                    
                         break;
                     case MMAP_FILE:
-                        if(pagedir_is_dirty(target_thread->pagedir, pg_round_down(target_uaddr)))
+                        if(pagedir_is_dirty(target_thread->pagedir, pg_round_down(target_uaddr))){
+			    pagedir_set_dirty(target_thread->pagedir, pg_round_down(target_uaddr), false);
                             file_write_at(sup_entry->file, sup_entry->uaddr, sup_entry->read_bytes, sup_entry->offset); 
-                       
+			}
                         break;
-                    case SWAP:             
-                        //printf("swap + %x\n", frame_entry->uaddr);
-                        sup_entry->swap_index = swap_out(frame_entry->kaddr);
+                    case SWAP:           
+		        //PANIC ("why swpped in?\n");	
+                        //printf("@@@@@@swap + %x\n", frame_entry1->uaddr);
+                        sup_entry->swap_index = swap_out(frame_entry1->kaddr);
                         break;
                     default:
                         break;
                 }
+		/*if(sup_entry->swap_index == 130){
+		  printf("@@@@swap_out : kaddr %x,  %x @@@\n", frame_entry1->kaddr, *(uint8_t*)(frame_entry1->kaddr));	
+		}*/
                 /*
                 if(target_uaddr>=0xbfff0000)
                     printf("%x go to swap\n", target_uaddr);
                 */
 
-                frame_free_page_2(frame_entry);
+                frame_free_page_2(frame_entry1);
                 //printf("@@@evicted\n"); 
                
                 kaddr = palloc_get_page(flags);
 
-                if(kaddr == NULL)
+                if(kaddr == NULL){
+		    //lock_release(&frame_lock);
                     PANIC ("why not removed?\n");
-                
+		}
                 frame_insert(uaddr, kaddr);
                 //lock_release(&frame_lock);
                 frame = kaddr;
@@ -127,7 +135,7 @@ void* frame_get_page(enum palloc_flags flags, void* uaddr){
                 break;
             }
             else{
-                pagedir_set_accessed(thread_current()->pagedir, frame_entry->uaddr,false);
+                pagedir_set_accessed(thread_current()->pagedir, frame_entry1->uaddr,false);
             }    
             if (clock_index >= frame_table_size){
                 hash_first(frame_table_clock, &frame_table);    
@@ -135,26 +143,38 @@ void* frame_get_page(enum palloc_flags flags, void* uaddr){
             }
         } 
     }
+    //lock_release(&frame_lock);
     return frame;
 }
 
 
 
 void frame_free_page(void* frame){
-  //  lock_acquire(&frame_lock);
-    struct frame_entry* real_frame;
+
+    //lock_acquire(&frame_lock);
+    struct frame_entry* real_frame = malloc(sizeof(struct frame_entry));
+
     real_frame->kaddr = frame;
+
+   // printf("free at %x\n", frame);
+
 
     struct hash_elem* e = hash_delete(&frame_table, &real_frame->frame_elem);
 
     palloc_free_page(frame);
 
-    if(e!= NULL)
+    if(e!= NULL){
         free(hash_entry(e, struct frame_entry, frame_elem));
-   // palloc_free_page(real_frame->kaddr);
-    else
-        PANIC("why..?\n");
-  //  lock_release(&frame_lock);
+        free(real_frame);
+    }
+    else{
+        free(real_frame);
+        //PANIC("why..?\n");
+    }
+
+    //lock_release(&frame_lock);
+
+
 }
 
 void frame_free_page_2(struct frame_entry* frame_entry){
