@@ -40,7 +40,7 @@ void* frame_get_page(enum palloc_flags flags, void* uaddr){
     if(!(flags & PAL_USER))
         return NULL;
     
-    //lock_acquire(&frame_lock);
+    lock_acquire(&frame_lock);
     uint8_t* frame = palloc_get_page(flags);
 
     /* free-page left*/
@@ -90,7 +90,7 @@ void* frame_get_page(enum palloc_flags flags, void* uaddr){
                         //printf("%x go to swap_table\n", sup_entry->uaddr);
                         if(pagedir_is_dirty(target_thread->pagedir, pg_round_down(target_uaddr))){
                             //printf("now..%x %x\n", frame_entry1->kaddr, frame_entry1->uaddr);
-			    pagedir_set_dirty(target_thread->pagedir, pg_round_down(target_uaddr), false);
+			    //pagedir_set_dirty(target_thread->pagedir, pg_round_down(target_uaddr), false);
 			    sup_entry->swap_index = swap_out(frame_entry1->kaddr);
                             sup_entry->type = SWAP;
                         }
@@ -99,7 +99,7 @@ void* frame_get_page(enum palloc_flags flags, void* uaddr){
                         break;
                     case MMAP_FILE:
                         if(pagedir_is_dirty(target_thread->pagedir, pg_round_down(target_uaddr))){
-			    pagedir_set_dirty(target_thread->pagedir, pg_round_down(target_uaddr), false);
+			    //pagedir_set_dirty(target_thread->pagedir, pg_round_down(target_uaddr), false);
                             file_write_at(sup_entry->file, sup_entry->uaddr, sup_entry->read_bytes, sup_entry->offset); 
 			}
                         break;
@@ -143,7 +143,7 @@ void* frame_get_page(enum palloc_flags flags, void* uaddr){
             }
         } 
     }
-    //lock_release(&frame_lock);
+    lock_release(&frame_lock);
     return frame;
 }
 

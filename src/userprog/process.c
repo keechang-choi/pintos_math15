@@ -726,7 +726,9 @@ bool stack_growth(void **esp, void *fault_addr){
 
   if(0xbf800000 <= *esp && *esp <= 0xc0000000){
     old_esp = *esp;
+    //thread_current()->before_transition_esp = old_esp;
   }else{
+    exit(-1);
     old_esp = thread_current()->before_transition_esp;
   }
 
