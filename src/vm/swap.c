@@ -41,7 +41,7 @@ size_t swap_out(void* kaddr){
     size_t index = bitmap_scan_and_flip(swap_bitmap, 0, 1, true);
     
     if(index == BITMAP_ERROR){
-       
+        //PANIC ("NO SWAP SPACE\n");
         return -1;
     }
     

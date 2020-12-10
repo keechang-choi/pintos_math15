@@ -41,7 +41,8 @@ struct sup_table_entry* sup_find_entry(struct hash* sup_table, void* uaddr){
     temp_s.uaddr = real_uaddr;
     struct hash_elem* sup_elem = hash_find(sup_table, &temp_s.sup_elem);
     if (sup_elem == NULL){
-        return NULL;
+        
+	return NULL;
     }       
     else
     {
@@ -57,17 +58,18 @@ void sup_destroy_func(struct hash_elem* h, void* aux){
     // printf("destroy at %x %d\n", sup_entry->uaddr, cur_thread->tid);
     struct thread* cur = thread_current();
     void* kaddr;
+
     switch(sup_entry->type){
                     case NORMAL:
                         
                         kaddr = pagedir_get_page(cur_thread->pagedir, sup_entry->uaddr);
                         pagedir_clear_page(cur_thread->pagedir, sup_entry->uaddr);
                         if(kaddr == NULL){
-                            //Case : page but not loaded.
-                            //printf("sexsex at %x %d\n", sup_entry->uaddr, cur_thread->tid);
+                            //Case : page but not loaded yet.
                         }
-                        else                           
-                            frame_free_page(kaddr);        
+                        else{
+                            frame_free_page(kaddr);   
+			}
                         break;
                     case MMAP_FILE:
                         
@@ -81,22 +83,22 @@ void sup_destroy_func(struct hash_elem* h, void* aux){
                             pagedir_clear_page(cur_thread->pagedir, sup_entry->uaddr);
                             if(kaddr == NULL)
                                 PANIC("HELP_ME_SWAP\n");   
-                        
                             frame_free_page(kaddr); 
                         }
-                        else        
+                        else{ 
+			 //swaped out state	
                             swap_bit(sup_entry->swap_index);
-                        //sup_entry->swap_index = swap_out(kaddr);
+			}
                         break;
                     default:
                         break;
     }
-    
     free(sup_entry);
     
 }
 
 void sup_table_destroy(struct hash* sup_table){
+    //printf("@@@@sup dest thread: %s \n", thread_current()->name);
     //printf("size compare : %d vs %d\n", hash_size(&frame_table), hash_size(&thread_current()->sup_table));
     hash_destroy(sup_table, sup_destroy_func);
    // printf("size compare : %d vs %d\n", hash_size(&frame_table), hash_size(&thread_current()->sup_table));
@@ -104,7 +106,6 @@ void sup_table_destroy(struct hash* sup_table){
 
 
 bool sup_load_file(void* kaddr, struct sup_table_entry* sup_entry){
-     
     if(sup_entry->file){
         if(sup_entry->read_bytes >0){
             
@@ -133,7 +134,6 @@ bool sup_load_file(void* kaddr, struct sup_table_entry* sup_entry){
             return true;
         }
     }
-
     return false;
 }
 

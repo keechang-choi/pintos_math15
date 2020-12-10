@@ -61,7 +61,6 @@ process_execute (const char *file_name_origin)
 
   /* load fail */
   if( child->load_flag == false){
-    //printf("sex2\n");
 
     free(temp);
     return -1;  
@@ -193,7 +192,6 @@ process_exit (void)
   uint32_t *pd;
   
   
-  //printf("sex\n");
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   //frame_delete_by_thread_exit(cur);
@@ -554,6 +552,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       sup_entry->is_loaded = false;
       sup_entry->file = file;
       sup_entry->offset = ofs;
+      sup_entry->swap_index = -1;
       sup_entry->read_bytes = page_read_bytes;
       sup_entry->zero_bytes = page_zero_bytes;
       //printf("%x created at %d\n", sup_entry->uaddr, thread_current()->tid);
@@ -635,16 +634,18 @@ setup_stack (void **esp, char* file_string)
   free(arguments);
       
       struct sup_table_entry* sup_entry = malloc(sizeof(struct sup_table_entry));
-      sup_entry->type = NORMAL;
+      sup_entry->type = SWAP;
       sup_entry->file = NULL;
       sup_entry->is_loaded = true;
       sup_entry->uaddr = ((uint8_t *) PHYS_BASE) - PGSIZE;
       sup_entry->writable = true;
+      sup_entry->swap_index = -1;
       lock_acquire(&frame_lock);
       frame_insert(sup_entry->uaddr,kpage);
       lock_release(&frame_lock);
  
       sup_insert(&thread_current()->sup_table, sup_entry);
+      thread_current()->before_transition_esp = 0xbffff000;
       }
       else{
         frame_free_page (kpage); 
@@ -679,10 +680,11 @@ install_page (void *upage, void *kpage, bool writable)
 
 bool handle_page_faultt(struct sup_table_entry* sup_entry){
   //printf("fault _addr %x with %d\n ", sup_entry->uaddr, thread_current()->tid);
+  //printf("fault _addr %x with %s\n ", sup_entry->uaddr, thread_current()->name);
   int a =sup_entry->type;
   bool success;
   uint8_t* kpage;
-  
+  lock_acquire(&frame_lock); 
   switch(a){
     case NORMAL:
       
@@ -718,7 +720,6 @@ bool handle_page_faultt(struct sup_table_entry* sup_entry){
       break;
     case SWAP:
       kpage = frame_get_page(PAL_USER | PAL_ZERO, sup_entry->uaddr);
-      //printf("sex... at %x\n", sup_entry->uaddr);
       if(kpage==NULL){ 
         ASSERT("alloc error");
         success = false;
@@ -741,14 +742,62 @@ bool handle_page_faultt(struct sup_table_entry* sup_entry){
       //printf("%x, %x installed:\n", kpage, sup_entry->uaddr);
       success = install_page(sup_entry->uaddr, kpage, sup_entry->writable);
       if(!success)
-        PANIC("sexxxxx\n");
+        PANIC("Install_fail\n");
 
   }
   else
   {
       PANIC("load_fail\n");
   }
-  
+  lock_release(&frame_lock);
 
+  return success;
+}
+
+
+
+bool stack_growth(void **esp, void *fault_addr){
+  //printf("@@@@@@@stack_grawth_start@@@@\n");
+  uint8_t *kpage;
+  bool success = false;
+  uint8_t *new_esp, *old_esp;
+
+  if(0xbf800000 <= *esp && *esp <= 0xc0000000){
+    old_esp = *esp;
+    thread_current()->before_transition_esp = old_esp;
+  }else{
+    exit(-1);
+    old_esp = thread_current()->before_transition_esp;
+  }
+
+  //printf("@@old_esp : %x\n",old_esp);
+  //old_esp = pg_round_down(old_esp);
+  //printf("@@o minus  %x, %x \n", old_esp-4, old_esp-32);
+  //8MB
+  if(fault_addr >= 0xbf800000 && (fault_addr >= old_esp-32)){
+   // printf("@@stack_grr, fault %x,  esp %x\n", fault_addr, old_esp);
+    new_esp = pg_round_down(fault_addr);
+    kpage = frame_get_page(PAL_USER | PAL_ZERO, new_esp);
+    if(kpage != NULL){
+      success = install_page(new_esp, kpage, true);
+      if(success){
+        struct sup_table_entry* sup_entry = malloc(sizeof(struct sup_table_entry));
+        sup_entry->type = SWAP;
+        sup_entry->file = NULL;
+        sup_entry->is_loaded = true;
+        sup_entry->uaddr = new_esp;
+        sup_entry->writable = true;
+	sup_entry->swap_index = -1;
+        lock_acquire(&frame_lock);
+        frame_insert(sup_entry->uaddr,kpage);
+        lock_release(&frame_lock);
+
+        sup_insert(&thread_current()->sup_table, sup_entry);
+        //*esp = fault_addr;
+      }
+    }
+  }else{
+    success = false;
+  }
   return success;
 }

@@ -6,6 +6,7 @@
 #include "vm/suppage.h"
 #include "devices/timer.h"
 #include <stdlib.h>
+
 void frame_init(void){
     lock_init(&frame_lock);
     hash_init(&frame_table, frame_val, frame_less, NULL);
@@ -42,9 +43,11 @@ bool frame_insert(void* uaddr, void* kaddr){
 }
 
 void* frame_get_page(enum palloc_flags flags, void* uaddr){
-    if(!(flags & PAL_USER))
-        return NULL;
-    lock_acquire(&frame_lock);
+    //lock_acquire(&frame_lock);
+    if(!(flags & PAL_USER)){
+        // lock_release(&frame_lock);
+	    return NULL;
+    }
     uint8_t* frame = palloc_get_page(flags);
     /* free-page left*/
     if(frame!= NULL){
@@ -74,8 +77,11 @@ void* frame_get_page(enum palloc_flags flags, void* uaddr){
             }
             clock_index ++;
             struct frame_entry* frame_entry = hash_entry(hash_cur(frame_table_clock), struct frame_entry, frame_elem);
-            if(frame_entry == NULL)
-                printf("sex\n");
+            if(frame_entry == NULL){
+	     // lock_release(&frame_lock);
+	      PANIC ("Clock paninc\n");
+
+	    }
             //printf("%x %x %d\n", frame_entry->kaddr, frame_entry->uaddr, frame_entry->thread->tid);
             if(!pagedir_is_accessed(thread_current()->pagedir, frame_entry->uaddr) ){
                 /* swap! */
@@ -121,9 +127,10 @@ void* frame_get_page(enum palloc_flags flags, void* uaddr){
                
                 kaddr = palloc_get_page(flags);
 
-                if(kaddr == NULL)
-                    PANIC ("why not removed?\n");
-                
+                if(kaddr == NULL){
+                  // lock_release(&frame_lock);
+		   PANIC ("why not removed?\n");
+		}
                 frame_insert(uaddr, kaddr);
                 //lock_release(&frame_lock);
                 frame = kaddr;
@@ -138,10 +145,9 @@ void* frame_get_page(enum palloc_flags flags, void* uaddr){
                 clock_index = 0;
             } 
         } 
-        
-       
+          
     }
-    lock_release(&frame_lock);
+   // lock_release(&frame_lock);
     return frame;
 }
 

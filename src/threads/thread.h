@@ -137,7 +137,7 @@ struct thread
    struct list mmap_list;
    struct lock f_lock;
    int mapid;
-
+   void *before_transition_esp;
   };
 
 /* If false (default), use round-robin scheduler.
